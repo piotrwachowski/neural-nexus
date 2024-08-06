@@ -1,0 +1,875 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+
+#!markdown
+
+### Environment setup
+
+#!csharp
+
+#i "nuget: https://api.nuget.org/v3/index.json"
+#r "nuget: TorchSharp-cpu, 0.102.6"
+#r "nuget: libtorch-cpu-win-x64, 2.2.1.1"
+#r "nuget: ScottPlot, 4.1.36"
+#r "nuget: System.Drawing.Common"
+
+#!csharp
+
+using TorchSharp;
+using TorchSharp.Modules;
+using static TorchSharp.torch.nn;
+using static TorchSharp.TensorExtensionMethods;
+
+#!csharp
+
+using System;
+using ScottPlot;
+using System.Drawing;
+using System.IO;
+
+#!csharp
+
+Console.WriteLine($"TorchSharp version: {torch.__version__}");
+Console.WriteLine($"CLR version: {System.Environment.Version}");
+Console.WriteLine($"CUDA available: {torch.cuda.is_available()}");
+Console.WriteLine($"GPU count: {torch.cuda.device_count()}");
+
+// Set the default tensor string style to C#.
+torch.TensorStringStyle = torch.csharp;
+
+// Set the device to CUDA if available, otherwise CPU.
+static var device = torch.cuda.is_available() ? torch.CUDA : torch.CPU;
+
+Console.WriteLine($"Device: {device}, Style: {torch.TensorStringStyle}");
+
+#!markdown
+
+#### Helper Functions
+
+#!csharp
+
+void DisplayBitmap(System.Drawing.Bitmap bitmap)
+{
+    // Convert the Bitmap to a base64 string
+    string base64String;
+    using (MemoryStream ms = new MemoryStream())
+    {
+        bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+        byte[] imgBytes = ms.ToArray();
+        base64String = Convert.ToBase64String(imgBytes);
+    }
+
+    // Display the image using HTML
+    string html = $"<img src='data:image/png;base64,{base64String}' />";
+    Microsoft.DotNet.Interactive.Formatting.Formatter.Register<string>((content, writer) =>
+    {
+        writer.Write(content);
+    }, "text/html");
+
+    html.DisplayAs("text/html");
+}
+
+#!csharp
+
+void VisualizeData(string Title, torch.Tensor XTrain, torch.Tensor YTrain, torch.Tensor XTest, torch.Tensor YTest, torch.Tensor YPred)
+{
+    double[] dataX = XTrain.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+    double[] dataY = YTrain.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+
+    var plt = new ScottPlot.Plot(600, 400);
+
+    plt.AddScatter(dataX, dataY, markerSize: 5, color: Color.Blue, label: "Train Data");
+
+
+    if (XTest is not null && YTest is not null)
+    {
+        double[] dataXTest = XTest.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+        double[] dataYTest = YTest.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+
+        var TestScatter = plt.AddScatter(dataXTest, dataYTest, markerSize: 5, color: Color.Green, label: "Test Data");
+    }
+
+    if (YPred is not null && XTest is not null)
+    {
+        double[] dataYPred = YPred.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+        double[] dataXTest = XTest.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+        var PredScatter = plt.AddScatter(dataXTest, dataYPred, markerSize: 5, color: Color.Red, label: "Pred Data");
+    }
+
+    plt.Title(Title);
+    plt.XLabel("X Axis");
+    plt.YLabel("Y Axis");
+    plt.Grid(true);
+    plt.Legend();
+
+    DisplayBitmap(plt.GetBitmap());
+}
+
+#!csharp
+
+public void PlotLoss(List<int> epochs, List<float> lossValues, List<float> testLoss)
+{
+    var plt = new ScottPlot.Plot(600, 400);
+
+    // Convert lists to arrays for ScottPlot
+    double[] xs = epochs.ConvertAll(x => (double)x).ToArray();
+    double[] ys = lossValues.ConvertAll(y => (double)y).ToArray();
+    double[] ysTest = testLoss.ConvertAll(y => (double)y).ToArray();
+
+    plt.AddScatter(xs, ys, markerSize: 5, color: Color.Blue, label: "Train Loss");
+    plt.AddScatter(xs, ysTest, markerSize: 5, color: Color.Green, label: "Test Loss");
+    plt.Title("Epochs vs Loss");
+    plt.XLabel("Epoch");
+    plt.YLabel("Loss");
+    plt.Grid(true);
+
+    // Display the plot in the notebook
+    DisplayBitmap(plt.GetBitmap());
+}
+
+#!markdown
+
+### Prepare the data
+
+#!markdown
+
+#### Linear Regression Formula
+
+#!markdown
+
+Linear regression is a statistical method used to model the relationship between a dependent variable and one or more independent variables. The formula for simple linear regression (with one independent variable) is:
+
+$$
+\Huge
+y = mx + b
+$$
+
+**Where:**
+- \( y \) is the dependent variable.
+- \( x \) is the independent variable.
+- \( m \) is the slope (coefficient) of the line.
+- \( b \) is the y-intercept (constant).
+
+**Dependent Variable (\( y \))**
+- **Definition**: The dependent variable is the outcome or the variable that you are trying to predict or explain. It is dependent on the independent variable(s).
+
+**Independent Variable (\( x \))**
+- **Definition**: The independent variable is the predictor or the variable that you use to predict the value of the dependent variable. It is not influenced by other variables in the analysis.
+
+**Slope (Coefficient, \( m \))**
+- **Definition**: The slope represents the change in the dependent variable for a one-unit. It indicates the strength and direction of the relationship between the independent and dependent variables.
+- **Interpretation**: If the slope is positive, the dependent variable increases as the independent variable increases. If the slope is negative, the dependent variable decreases as the independent variable increases.
+
+**Constant/Intercept (\( b \))**
+- **Definition**: The y-intercept is the value of the dependent variable when the independent variable is zero. It represents the starting point of the line on the y-axis.
+
+**Putting It All Together**
+In the linear regression formula \( y = mx + b \):
+- The slope (\( m \)) tells us how much \( y \) changes for a unit change in \( x \).
+- The intercept (\( b \)) tells us the value of \( y \) when \( x \) is zero.
+- The dependent variable (\( y \)) is what we predict.
+- The independent variable (\( x \)) is what we use for the prediction.
+
+#!markdown
+
+#### Create known data
+
+#!csharp
+
+// use linear regression to create a straight line with known parameters (y = mx + b)
+
+// equvalent to m
+var weight = 0.7f; 
+
+// equivalent to b
+var bias = 0.3f;
+
+// generate some random x values
+var start = 0;
+var end = 1;
+var step = 0.02;
+var X = torch.arange(start, end, step, device: device).unsqueeze(1);    // unsqueeze to make it a column vector
+var y = weight * X + bias;
+
+#!csharp
+
+X.narrow(0, 0, 6).print();
+
+#!csharp
+
+Console.WriteLine($"X count: {X.shape[0]}");
+
+#!csharp
+
+y.narrow(0, 0, 6).print();
+
+#!csharp
+
+Console.WriteLine($"y count: {y.shape[0]}");
+
+#!markdown
+
+- **Now the idea is that if we have input data \(X\) and corresponding data \(y\), we need to find the relationship between them (learning the model).**
+- **In this example, of course, we know the relationship because we created these two sets, and the relationship is \(y = 0.7x + 0.3\). But in real life, we won't know that.**
+
+#!csharp
+
+VisualizeData("Known data for X and Y", X, y, null, null, null);
+
+#!markdown
+
+#### Splitting data into training and test sets
+
+#!markdown
+
+One of the essential steps in model training is splitting the data into training and test sets. This process involves dividing the dataset into two separate parts: one for training the model and the other for evaluating its performance.
+
+**Purpose**
+- **Training Set**: This subset of the data is used to train the model. It allows the model to learn the relationships between the input features and the target variable.
+- **Test Set**: This subset is used to evaluate the model's performance. It provides an unbiased assessment of how well the model generalizes to new, unseen data.
+
+**Importance**
+- **Prevents Overfitting**: By evaluating the model on a separate test set, you can ensure that the model does not simply memorize the training data but learns to generalize to new data.
+- **Model Validation**: Splitting the data allows you to validate the model's performance and make necessary adjustments, such as tuning hyperparameters.
+
+**Typical Split Ratios**
+- **70-30**: 70% of the data is used for training, and 30% is used for testing.
+- **80-20**: 80% of the data is used for training, and 20% is used for testing.
+- **90-10**: 90% of the data is used for training, and 10% is used for testing.
+
+#!csharp
+
+// train/test split
+var trainTestSplit = 0.8;
+
+#!markdown
+
+##### Prepare Train Data
+
+#!csharp
+
+var XDataCount = X.shape[0];
+var YDataCount = y.shape[0];
+
+#!csharp
+
+// train data X count
+var XTrainDataCount = (int)(trainTestSplit * XDataCount);
+Console.WriteLine($"Train dataX count: {XTrainDataCount} of {X.shape[0]}");
+
+#!csharp
+
+// split X data and get the train data
+var XTrainData = X.narrow(0, 0, XTrainDataCount);
+Console.WriteLine($"Train dataX count: {XTrainData.shape[0]}");
+
+#!csharp
+
+// train data Y count
+var YTrainDataCount = (int)(trainTestSplit * YDataCount);
+Console.WriteLine($"Train dataY count: {YTrainDataCount} of {y.shape[0]}");
+
+#!csharp
+
+// split Y data and get the train data
+var YTrainData = y.narrow(0, 0, YTrainDataCount);
+Console.WriteLine($"Train dataY count: {YTrainData.shape[0]}");
+
+#!markdown
+
+##### Prepare Test Data
+
+#!csharp
+
+// test data X count
+var XTestDataCount = XDataCount - XTrainDataCount;
+Console.WriteLine($"Test dataX count: {XTestDataCount} of {X.shape[0]}");
+
+#!csharp
+
+// split X data and get the test data
+var XTestData = X.narrow(0, XTrainDataCount, XTestDataCount);
+Console.WriteLine($"Test dataX count: {XTestData.shape[0]}");
+
+#!csharp
+
+// test data Y count
+var YTestDataCount = YDataCount - YTrainDataCount;
+Console.WriteLine($"Test dataY count: {YTestDataCount} of {y.shape[0]}");
+
+#!csharp
+
+// split Y data and get the test data
+var YTestData = y.narrow(0, YTrainDataCount, YTestDataCount);
+Console.WriteLine($"Test dataY count: {YTestData.shape[0]}");
+
+#!markdown
+
+##### Visualize the data
+
+#!csharp
+
+Console.WriteLine($"Train dataX count: {XTrainData.shape[0]} of {XDataCount}");
+Console.WriteLine($"Train dataY count: {YTrainData.shape[0]} of {YDataCount}");
+Console.WriteLine($"Test dataX count: {XTestData.shape[0]} of {XDataCount}");
+Console.WriteLine($"Test dataY count: {YTestData.shape[0]} of {YDataCount}");
+
+#!csharp
+
+VisualizeData("Train and Test data", XTrainData, YTrainData, XTestData, YTestData, null);
+
+#!markdown
+
+### Build Model
+
+#!markdown
+
+#### Linear Regression Model
+
+#!markdown
+
+A linear regression model is a statistical method used to understand the relationship between two continuous variables. The model predicts the value of a dependent variable (\(y\)) based on the value of an independent variable (\(x\)). The relationship is modeled using a linear equation:
+
+**\[ y = mx + b \]**
+
+**Components of the Linear Regression Equation**
+
+1. **Dependent Variable (\(y\))**:
+   - The outcome or the variable you are trying to predict.
+
+2. **Independent Variable (\(x\))**:
+   - The predictor or the variable used to predict the dependent variable.
+
+3. **Slope (\(m\))**:
+   - Represents the change in the dependent variable for a one-unit change in the independent variable.
+   - It indicates the strength and direction of the relationship between \(x\) and \(y\).
+
+4. **Intercept (\(b\))**:
+   - The value of \(y\) when \(x = 0\).
+   - It represents the starting point of the line on the y-axis.
+
+**How the Model Works**
+
+The linear regression model essentially runs the formula \(y = mx + b\) to make predictions. Here’s how it works:
+
+1. **Fitting the Model**:
+   - During the training phase, the model uses a dataset with known \(x\) and \(y\) values to find the best values for \(m\) (slope) and \(b\) (intercept) that minimize the error between the predicted \(y\) values and the actual \(y\) values.
+   - This process involves calculating the least squares, which minimizes the sum of the squared differences between the observed and predicted values.
+
+2. **Making Predictions**:
+   - Once the model is trained, you can use the learned values of \(m\) and \(b\) to make predictions on new data.
+   - For any new value of \(x\), you can compute the predicted \(y\) using the equation \(y = mx + b\).
+
+**Example Application**
+
+You have data on the number of hours studied (independent variable, \(x\)) and the corresponding test scores (dependent variable, \(y\)). By applying linear regression, you can determine how changes in study hours affect test scores. Once trained, your model can predict the test score for any given number of study hours.
+
+#!markdown
+
+#### Model definition
+
+#!markdown
+
+In the given class `LinearRegressionModel`, we have two parameters, `weight` and `bias`, which were initially known to us (during data preparation). However, in the context of machine learning, the goal of training the model is to learn these parameters, which are now unknown. The purpose of learning is to use the provided training data to estimate these parameters accurately, so the model can make predictions as close as possible to the values used to create the data.
+
+During training, the model uses the known input data (features) and the corresponding output data (labels) to adjust the `weight` and `bias` through optimization techniques such as gradient descent. The training process iteratively updates these parameters to minimize the difference between the predicted output and the actual output.
+
+Once the training is complete, the learned parameters should ideally approximate the original values used to generate the data. This allows the model to make accurate predictions on new, unseen data, demonstrating that it has effectively learned the underlying relationship between the input features and the output.
+
+In summary, the training process is all about discovering the best `weight` and `bias` values that enable the model to reproduce the data relationship as accurately as possible, using the known training data to guide the learning process.
+
+Starting with random numbers for the parameters ensures that the model explores various possibilities during training, preventing it from being biased by any initial assumptions.
+
+#!csharp
+
+// A linear regression model using manually defined weight and bias parameters.
+public class LienarRegressionModel : torch.nn.Module<torch.Tensor, torch.Tensor>
+{
+    private readonly Parameter weight;
+    private readonly Parameter bias;
+
+    public LienarRegressionModel() : base("LinearRegressionModel")
+    {
+        weight = new Parameter(torch.randn(new long[] { 1 }, device: device, dtype: torch.ScalarType.Float32), requires_grad: true);
+        bias = new Parameter(torch.randn(new long[] { 1 }, device: device, dtype: torch.ScalarType.Float32), requires_grad: true);
+
+        RegisterComponents();
+    }
+
+    public override torch.Tensor forward(torch.Tensor x)
+    {
+        // return x * weight + bias;
+        // the call weight.unsqueeze(0) is to make the weight tensor a 2D tensor like our input tensor x (Train and test data are 2D tensors)
+        return x.mm(weight.unsqueeze(0)) + bias;
+    }
+}
+
+#!csharp
+
+// A linear regression model using a predefined linear layer from TorchSharp.
+public class LienarRegressionModelV2 : torch.nn.Module<torch.Tensor, torch.Tensor>
+{
+    private readonly Linear linearLayer;
+
+    public LienarRegressionModelV2() : base("LinearRegressionModelV2")
+    {
+        linearLayer = torch.nn.Linear(1, 1);
+        RegisterComponents();
+    }
+
+    public override torch.Tensor forward(torch.Tensor x)
+    {
+        return linearLayer.forward(x);
+    }
+}
+
+#!markdown
+
+**Loss Function**
+
+A loss function is a mathematical function that measures the difference between the predicted values produced by a model and the actual values in the data. It quantifies how well or poorly a model's predictions match the true outcomes. The goal of training a machine learning model is to minimize this loss, thereby improving the accuracy of the model's predictions.
+
+- **Purpose**: The loss function guides the optimization process by providing feedback on how the model's predictions compare to the actual data.
+- **Types**: Common loss functions include Mean Squared Error (MSE) for regression tasks and Cross-Entropy Loss for classification tasks.
+- **Optimization**: During training, algorithms like Gradient Descent use the loss function to adjust the model's parameters (weights and biases) to minimize the loss, leading to better performance.
+
+**Gradient**
+
+A gradient is a vector that represents the direction and rate of the fastest increase of a function. In the context of machine learning and optimization, the gradient indicates how much the loss function changes with respect to small changes in the model parameters (weights and biases). 
+
+- **Direction**: The gradient points in the direction of the steepest ascent of the loss function.
+- **Magnitude**: The magnitude of the gradient indicates how steep the slope is; larger magnitudes mean steeper slopes.
+- **Optimization**: During training, algorithms like Gradient Descent use the gradient to update model parameters in the direction that reduces the loss (steepest descent).
+
+In summary, the gradient helps in understanding how to adjust model parameters to minimize the loss function, thereby improving the model's performance.
+
+#!markdown
+
+**Learnig process**
+
+**1. Gradient Descent:**
+
+- Gradient Descent is an optimization algorithm used to minimize the loss function. In the context of linear regression, the loss function is often Mean Squared Error (MSE).
+- The algorithm iteratively adjusts the parameters (weights and bias) to find the values that minimize the loss function.
+- At each step, the gradient (partial derivative) of the loss function with respect to each parameter is calculated. The parameters are then updated in the direction that reduces the loss.
+- This process is repeated until the algorithm converges to a minimum, ideally the global minimum, where the loss is as low as possible.
+
+Link: https://www.youtube.com/watch?v=IHZwWFHWa-w
+
+**2. Backpropagation:**
+
+- Backpropagation is an algorithm used to calculate the gradient of the loss function with respect to each parameter in the model. It is particularly essential in deep learning for updating weights in multi-layer networks, but its principles apply to simpler models as well.
+- It works by propagating the error from the output layer back through the model, layer by layer, calculating the gradient at each step.
+- In linear regression, backpropagation helps compute how much each weight and bias should be adjusted to minimize the error.
+
+Link: https://www.youtube.com/watch?v=Ilg3gGewQ5U
+
+**3. Combined Process**
+
+- **Forward Pass**: In the forward pass, the model computes the predicted output using the current parameters.
+- **Loss Calculation**: The loss function calculates the difference between the predicted output and the actual output.
+- **Backward Pass (Backpropagation)**: The gradients of the loss function with respect to the parameters are computed.
+- **Parameter Update (Gradient Descent)**: The parameters are updated using the gradients to reduce the loss.
+
+**Summary**
+
+The training process involves repeatedly performing these steps, with Gradient Descent and Backpropagation working together to iteratively adjust the parameters to minimize the loss and improve the model's predictions.
+
+#!markdown
+
+#### Model with manual parameters
+
+#!csharp
+
+// instantiate the model
+
+var RandomSeed = 42;
+torch.manual_seed(RandomSeed);
+
+var Model = new LienarRegressionModel().to(device);
+
+#!csharp
+
+// list the model parameters
+
+Model.parameters().ToList().ForEach(p => {
+        Console.WriteLine($"Value: {p.data<float>()[0]} | Requires grad: {p.requires_grad} | {p}");
+    }
+);
+
+#!csharp
+
+// list the model state dictionary (named parameters)
+
+Model.state_dict().ToList().ForEach(p => {
+        Console.WriteLine($"Key: {p.Key} | Value: {p.Value.data<float>()[0]} | Requires grad: {p.Value.requires_grad} | {p.Value}");
+    }
+);
+
+#!csharp
+
+using(torch.no_grad()) // inference mode
+{
+    var prediction = Model.forward(XTestData);
+    VisualizeData("Prediction", XTrainData, YTrainData, XTestData, YTestData, prediction);
+}
+
+#!markdown
+
+**using(torch.no_grad())**
+
+In PyTorch and TorchSharp, `torch.no_grad()` is a context manager used to temporarily disable gradient computation. This is particularly useful during the inference or evaluation phase of a model, where you do not need to compute gradients. Here's what it does:
+
+- **Disables Gradient Calculation**: During the scope of `torch.no_grad()`, the autograd engine is disabled, meaning no gradients will be calculated. This is beneficial for inference because it reduces memory usage and computational overhead.
+
+- **Improves Performance**: By not calculating gradients, operations run faster and use less memory. This is important in scenarios where you're making predictions or evaluating the model on a validation set.
+
+- **Prevents Accidental Gradient Computation**: When you are only interested in the model's output and not in updating its weights, using `torch.no_grad()` ensures that no accidental gradient computation happens, which could otherwise lead to unnecessary memory consumption and potential errors.
+
+#!markdown
+
+#### Model with predefined linear layer from TorchSharp
+
+#!csharp
+
+// instantiate the model
+
+var RandomSeed = 42;
+torch.manual_seed(RandomSeed);
+
+var ModelV2 = new LienarRegressionModelV2().to(device);
+
+#!csharp
+
+// list the model parameters
+
+ModelV2.parameters().ToList().ForEach(p => {
+        Console.WriteLine($"Value: {p.data<float>()[0]} | Requires grad: {p.requires_grad} | {p}");
+    }
+);
+
+#!csharp
+
+// list the model state dictionary (named parameters)
+
+ModelV2.state_dict().ToList().ForEach(p => {
+        Console.WriteLine($"Key: {p.Key} | Value: {p.Value.data<float>()[0]} | Requires grad: {p.Value.requires_grad} | {p.Value}");
+    }
+);
+
+#!csharp
+
+using(torch.no_grad()) // inference mode
+{
+    var prediction = ModelV2.forward(XTestData);
+    VisualizeData("Prediction", XTrainData, YTrainData, XTestData, YTestData, prediction);
+}
+
+#!markdown
+
+#### Training Model
+
+#!markdown
+
+##### Loss Function
+
+#!markdown
+
+A loss function is a tool used in machine learning to measure how well a model's predictions match the actual results. It calculates the difference between the predicted values and the true values, giving a numerical value that the model aims to minimize. The smaller the loss, the better the model's predictions are.
+
+- **Purpose**: To guide the model on how to improve its predictions by showing how far off they are from the actual values.
+- **Types**: Different loss functions are used for different tasks, such as Mean Squared Error (MSE) for regression and Cross-Entropy Loss for classification.
+- **Optimization**: The goal of training a model is to adjust its parameters to minimize the loss function, thus improving prediction accuracy.
+
+**Mean Absolute Error (MAE)**
+
+Mean Absolute Error (MAE) is a loss function used in regression tasks to measure the average magnitude of errors between predicted values and actual values. Unlike Mean Squared Error (MSE), which squares the errors before averaging, MAE takes the absolute value of each error, making it less sensitive to outliers.
+
+- **Purpose**: To measure the average magnitude of errors in a set of predictions, without considering their direction (positive or negative).
+- **Calculation**: MAE is calculated by taking the average of the absolute differences between the predicted values and the actual values.
+- **Sensitivity**: MAE is less sensitive to outliers compared to MSE, as it does not square the errors.
+
+The formula for MAE is:
+
+$$
+\Huge
+\text{MAE} = \frac{1}{n} \sum_{i=1}^n |y_i - \hat{y}_i|
+$$
+
+where \( y<sub>i</sub> \) are the actual values and \( &#375;<sub>i</sub> \) are the predicted values.
+
+**Use Case**: MAE is particularly useful in cases where you want to measure the average error in a way that is not overly influenced by large errors (outliers).
+
+#!markdown
+
+##### Optimizer
+
+#!markdown
+
+An optimizer is an algorithm or method used in machine learning to adjust the parameters (weights and biases) of a model to minimize the loss function. The optimizer helps improve the model's accuracy by finding the best set of parameters that reduce the error between the predicted values and the actual values.
+
+- **Purpose**: To adjust the model's parameters to minimize the loss function, thereby improving the model's predictions.
+- **Types**: Common optimizers include Gradient Descent, Stochastic Gradient Descent (SGD), Adam, and RMSprop.
+- **Function**: During training, the optimizer uses the gradients calculated by backpropagation to update the model's parameters in a way that reduces the loss.
+
+- **Gradient Descent**: An optimization algorithm that updates the parameters by moving them in the direction of the negative gradient of the loss function.
+
+#!csharp
+
+// instantiate the model
+var RandomSeed = 42;
+torch.manual_seed(RandomSeed);
+
+var Model0 = new LienarRegressionModel().to(device);
+
+Model0.state_dict().ToList().ForEach(p => {
+        Console.WriteLine($"Key: {p.Key} | Value: {p.Value.data<float>()[0]} | Requires grad: {p.Value.requires_grad} | {p.Value}");
+    }
+);
+
+// Setup a loss function
+var LossFunction = torch.nn.L1Loss();
+
+// Setup an optimizer
+var LearningRate = 0.01;
+var Optimizer = torch.optim.SGD(Model0.parameters(), LearningRate);
+
+#!markdown
+
+##### Backpropagation
+
+#!markdown
+
+The backward pass, also known as backpropagation, is a critical step in training neural networks. During this phase, the algorithm computes the gradient (partial derivatives) of the loss function with respect to each parameter (weight and bias) by propagating the error backward through the network. Here's a detailed explanation:
+
+1. **Gradient Calculation**:
+   - The gradient of a function measures how much the function's output changes with respect to a small change in its input. In the context of neural networks, gradients help determine how to adjust the model parameters to minimize the loss.
+   - During backpropagation, we calculate the gradient of the loss function with respect to each parameter in the network. These gradients indicate the direction and magnitude of change needed to reduce the error.
+
+2. **Chain Rule of Calculus**:
+   - Backpropagation relies on the chain rule of calculus, which allows us to compute the gradient of a composite function by multiplying the gradients of the individual functions.
+   - In a neural network, each layer can be considered a function. The chain rule helps us compute the gradient of the loss function with respect to the parameters of each layer by propagating the gradients backward through the network.
+
+3. **Error Propagation**:
+   - Starting from the output layer, the algorithm calculates the gradient of the loss with respect to the output of the layer. This is done using the derivative of the loss function.
+   - The computed gradient is then propagated backward to the previous layer. This involves calculating the gradient of the layer's activation function and the weights connecting the layers.
+   - This process continues layer by layer until the input layer is reached.
+
+4. **Weight and Bias Updates**:
+   - Once the gradients are computed, they are used to update the model's parameters. This update is typically done using an optimization algorithm like Gradient Descent.
+
+#!markdown
+
+##### Training and Testing Loop
+
+#!markdown
+
+**Steps:**
+
+1. **Make predictions**: Data moving through Model's forward function
+2. **Calculate Gradient (Loss)**: Compute the gradient of the loss function with respect to each parameter.
+3. **Update Parameters (Optimizer, backpropagation)**: Adjust the parameters in the opposite direction of the gradient to reduce the loss.
+4. **Repeat**: This process is repeated for many iterations until the loss is minimized.
+
+#!markdown
+
+**Training Loop**
+
+#!csharp
+
+var Epochs = 3000;
+
+#!csharp
+
+// Tracking experiments
+var EpochCount = new List<int>();
+var LossValues = new List<float>();
+var TesstEpochsCount = new List<int>();
+var TestLossValues = new List<float>();
+
+#!csharp
+
+torch.Tensor TrainPrediction = null;
+torch.Tensor TestPrediction = null;
+
+for (int epoch = 0; epoch < Epochs; ++epoch)
+{
+    EpochCount.Add(epoch);
+
+    // 0. set the model to training mode
+    Model0.train();
+
+    // 1. forward pass
+    TrainPrediction = Model0.forward(XTrainData);
+
+    // 2. calculate the loss
+    var Loss = LossFunction.forward(TrainPrediction, YTrainData);
+    LossValues.Add(Loss.item<float>());
+
+    // 3. zero the gradients
+    Optimizer.zero_grad();
+
+    // 4. backward pass
+    Loss.backward();
+
+    // 5. update the weights
+    Optimizer.step();
+
+    // 6. Print the loss and parameter changes
+    Model0.state_dict().ToList().ForEach(p => {
+        if(epoch % 10 == 0) {
+                string epochStr = $"Epoch: {epoch}".PadRight(15);
+                string valueStr = $"Value: {p.Value.data<float>()[0]}".PadRight(25);
+                string lossStr = $"Loss: {Loss.item<float>()}".PadRight(20);
+                string paramStr = $"Param: {p.Key}".PadRight(20);  
+                Console.WriteLine($"{epochStr} | {paramStr} | {valueStr} | {lossStr}");
+            }
+        }
+    );
+
+    using(torch.no_grad()) // no inference mode
+    {
+        // 7. set the model to evaluation mode
+        Model0.eval();
+
+        // 8. test forward pass
+        TestPrediction = Model0.forward(XTestData);
+
+        // 9. calculate the test loss
+        var test_loss = LossFunction.forward(TestPrediction, YTestData);
+        TestLossValues.Add(test_loss.item<float>());
+    }
+}
+
+#!csharp
+
+PlotLoss(EpochCount, LossValues, TestLossValues);
+
+#!csharp
+
+// Visualize the TrainPrediction
+VisualizeData("Prediction", XTrainData, YTrainData, XTrainData, YTrainData, TrainPrediction);
+
+#!csharp
+
+// Visualize the TestPrediction
+VisualizeData("Prediction", XTrainData, YTrainData, XTestData, YTestData, TestPrediction);
+
+#!markdown
+
+**`Model0.train()`**
+
+This function is used to set the model in training mode, enabling the computation of gradients during backpropagation.
+
+1. **Setting Model to Training Mode**:
+   - The line `Model0.train();` is a method call used to set the model in training mode. In machine learning, models often have different behaviors during training and evaluation. During training, the model adjusts its parameters based on the input data and the desired output. This process is known as backpropagation, where the model computes gradients and updates its parameters to minimize the loss function.
+
+2. **Enabling Gradient Computation**:
+   - By calling `Model0.train();`, you are instructing the model to enable the computation of gradients during backpropagation. This means that when you later call the optimizer's `backward()` method to compute gradients, the model will be ready to calculate them.
+
+3. **Clarification on Gradient Computation**:
+   - It's important to note that calling `Model0.train();` itself does not directly enable gradients. The actual computation of gradients is managed by the optimizer and the computation graph. However, calling `Model0.train();` prepares the model for gradient computation during backpropagation.
+
+#!markdown
+
+**`optimizer.zero_grad()`**
+
+1. **Resetting Gradients**:
+   - During the backward pass, gradients are accumulated into the `.grad` attributes of the parameters. This accumulation happens because PyTorch, by default, adds the new gradients to any existing gradients.
+   - Calling `optimizer.zero_grad()` resets these gradients to zero. This is necessary because if you don't zero out the gradients, the gradients from the current batch will be added to the gradients from the previous batch, leading to incorrect updates.
+
+2. **Why Reset Gradients?**:
+   - **Prevents Gradient Accumulation**: Without zeroing out the gradients, the optimizer would incorrectly adjust the model parameters based on the accumulated gradients from all previous batches, not just the current one.
+   - **Ensures Correct Updates**: By resetting the gradients at the start of each iteration, you ensure that each parameter update is based solely on the current batch's gradient.
+
+#!markdown
+
+**`Model0.eval();`**
+
+The `eval()` method is typically used to switch the model into evaluation mode.
+
+1. **Switching to Evaluation Mode**:
+   - The `eval()` method is called to set the model into evaluation mode. In this mode, the model's behavior changes from training mode to ensure accurate and consistent predictions.
+
+2. **Disabling Dropout and Batch Normalization**:
+   - During evaluation mode, operations like dropout and batch normalization are disabled. Dropout, which randomly zeroes out some elements of the input tensor during training to prevent overfitting, is turned off. Batch normalization layers use running averages instead of batch statistics.
+
+3. **Clarification on Gradient Computation**:
+   - While `Model0.eval()` itself does not directly disable gradient computation, it is commonly used in conjunction with `torch.no_grad()` to ensure that no gradients are computed during inference. This saves memory and computation time. By disabling gradient computation, the model ensures that all resources are dedicated to making predictions rather than updating weights.
+
+It's important to note that the exact behavior of `eval()` can vary depending on the specific machine learning framework being used. However, in general, calling `eval()` on a model is a common practice to ensure that the model is in the appropriate mode for making predictions or evaluating its performance.
+
+#!markdown
+
+**`torch.no_grad()`**
+
+The `torch.no_grad()` method is a context manager used to temporarily disable gradient computation.
+
+1. **Disabling Gradient Computation:**
+   - The `torch.no_grad()` context manager is used to ensure that operations within its block do not track gradients. This is particularly useful during inference, where gradient computation is unnecessary.
+
+2. **Usage During Model Evaluation:**
+   - It is commonly applied during the evaluation phase of a model, such as when making predictions on validation or test data. By disabling gradient computation, it optimizes performance and resource utilization.
+
+3. **Memory Efficiency and Speed:**
+   - Using `torch.no_grad()` reduces memory consumption because it avoids storing intermediate activations required for gradient computation. It also speeds up the computations since the overhead of calculating gradients is eliminated.
+
+#!markdown
+
+**Explanation of Higher Test Loss**
+
+It's normal for the test loss to be higher than the training loss for several reasons:
+
+1. **Overfitting**
+   - During training, the model might have learned specific patterns in the training data that do not generalize well to the test data. This results in a lower training loss and a higher test loss.
+
+2. **Different Data Distributions**
+   - The training and test datasets might have different distributions. The model performs well on the training data but struggles with the test data due to this distribution difference.
+
+3. **Regularization and Dropout**
+   - If regularization techniques like dropout are used during training, they are typically disabled during evaluation. This can lead to a performance discrepancy between training and evaluation phases.
+
+4. **Summary**
+   - It's common and expected for the test loss to be higher than the training loss due to overfitting, different data distributions, and the absence of regularization during evaluation.
+   - The difference in loss values indicates how well the model generalizes to unseen data. A significant difference suggests potential overfitting or a need for more representative test data.
+
+Overall, a higher test loss compared to the training loss is a common observation and highlights the importance of model validation and regularization techniques to improve generalization.
+
+#!markdown
+
+#### Saving Model
+
+#!markdown
+
+In machine learning, saving and loading models is crucial for preserving the trained state of a model, enabling it to be reused without retraining. This is especially important for deploying models in production, sharing them with others, or continuing training later. The files commonly used for this purpose are `.pt` or `.pth` files in PyTorch and TorchSharp.
+
+**.pt and .pth Files**
+
+`.pt` and `.pth`: These extensions are used interchangeably in PyTorch and TorchSharp. There is no functional difference between them; it is purely a matter of convention. `.pt` is typically used for saving any model or tensor, while `.pth` is often used to indicate a path or checkpoint for model weights.
+
+#!csharp
+
+var parentFolder = Directory.GetParent(Directory.GetCurrentDirectory());
+var modelPath = Path.Combine(parentFolder.FullName, "models", $"LinearRegressionModel.pt");
+
+// Model0.save(modelPath);
+
+#!markdown
+
+#### Load Model
+
+#!csharp
+
+var parentFolder = Directory.GetParent(Directory.GetCurrentDirectory());
+var modelPath = Path.Combine(parentFolder.FullName, "models", $"LinearRegressionModel.pt");
+
+var LoadedModel = new LienarRegressionModel();
+LoadedModel.load(modelPath);
+
+using(torch.no_grad()) // inference mode
+{
+    LoadedModel.eval();
+    var prediction = LoadedModel.forward(XTestData);
+    VisualizeData("Prediction", XTrainData, YTrainData, XTestData, YTestData, prediction);
+}

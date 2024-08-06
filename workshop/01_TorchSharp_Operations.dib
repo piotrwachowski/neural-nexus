@@ -1,0 +1,1021 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+
+#!markdown
+
+### Environment setup
+
+#!csharp
+
+#i "nuget: https://api.nuget.org/v3/index.json"
+#r "nuget: TorchSharp-cpu, 0.102.6"
+#r "nuget: libtorch-cpu-win-x64, 2.2.1.1"
+#r "nuget: System.Drawing.Common"
+
+#!csharp
+
+using TorchSharp;
+using static TorchSharp.TensorExtensionMethods;
+
+#!csharp
+
+Console.WriteLine($"TorchSharp version: {torch.__version__}");
+Console.WriteLine($"CLR version: {System.Environment.Version}");
+Console.WriteLine($"CUDA available: {torch.cuda.is_available()}");
+Console.WriteLine($"GPU count: {torch.cuda.device_count()}");
+
+// Set the default tensor string style to C#.
+torch.TensorStringStyle = torch.csharp;
+
+// Set the device to CUDA if available, otherwise CPU.
+var device = torch.cuda.is_available() ? torch.CUDA : torch.CPU;
+
+Console.WriteLine($"Device: {device}, Style: {torch.TensorStringStyle}");
+
+#!markdown
+
+### Common Tensor Operations
+
+#!markdown
+
+In tensor libraries like PyTorch and TorchSharp, a variety of tensor operations are available to perform mathematical computations. 
+
+In the context of tensor operations, "element-wise" refers to performing an operation independently on each corresponding element of the input tensors. This means that the operation is applied to each element at the same position (index) across the tensors involved.
+
+In the context of tensor operations, the "dot product" refers to an operation that takes two equal-length sequences of numbers (usually vectors) and returns a single number. This means that each corresponding pair of elements from the input vectors is multiplied together, and then all these products are summed up to produce the final result.
+
+Here are some of the most common operations:
+
+#!markdown
+
+#### 1. Addition
+
+#!markdown
+
+- **Description**: Element-wise addition of two tensors.
+
+#!csharp
+
+var tensor = torch.tensor(new float[] {1.0f, 2.0f, 3.0f});
+var scalar = 10.0f;
+
+// var result = torch.add(tensor, scalar);
+var result = tensor + scalar;
+result
+
+#!csharp
+
+var tensor = torch.tensor(new float[,] {
+    {1.0f, 2.0f},
+    {3.0f, 4.0f}
+});
+var scalar = 10.0f;
+
+// var result = torch.add(tensor, scalar);
+var result = tensor + scalar;
+result
+
+#!csharp
+
+var tensor1 = torch.tensor(new float[] {1.0f, 2.0f, 3.0f});
+var tensor2 = torch.tensor(new float[] {4.0f, 5.0f, 6.0f});
+
+// var result = torch.add(tensor1, tensor2);
+var result = tensor1 + tensor2;
+result
+
+#!markdown
+
+#### 2. Subtraction
+
+#!markdown
+
+- **Description**: Element-wise subtraction of two tensors.
+
+#!csharp
+
+var tensor = torch.tensor(new float[] {1.0f, 2.0f, 3.0f});
+var scalar = 10.0f;
+
+// var result = torch.sub(tensor, scalar);
+var result = tensor - scalar;
+result
+
+#!csharp
+
+var tensor = torch.tensor(new float[,] {
+    {1.0f, 2.0f},
+    {3.0f, 4.0f}
+});
+var scalar = 10.0f;
+
+// var result = torch.sub(tensor, scalar);
+var result = tensor - scalar;
+result
+
+#!csharp
+
+var tensor1 = torch.tensor(new float[] {4.0f, 5.0f, 6.0f});
+var tensor2 = torch.tensor(new float[] {1.0f, 2.0f, 3.0f});
+
+// var result = torch.sub(tensor1, tensor2);
+var result = tensor1 - tensor2;
+result
+
+#!markdown
+
+#### 3. Multiplication (Element-wise)
+
+#!markdown
+
+- **Description**: Element-wise multiplication of two tensors.
+
+#!csharp
+
+var tensor = torch.tensor(new float[] {1.0f, 2.0f, 3.0f});
+var scalar = 10.0f;
+
+// var result = torch.mul(tensor, scalar);
+var result = tensor * scalar;
+result
+
+#!csharp
+
+var tensor = torch.tensor(new float[,] {
+    {1.0f, 2.0f},
+    {3.0f, 4.0f}
+});
+var scalar = 10.0f;
+
+// var result = torch.mul(tensor, scalar);
+var result = tensor * scalar;
+result
+
+#!csharp
+
+var tensor1 = torch.tensor(new float[] {1.0f, 2.0f, 3.0f});
+var tensor2 = torch.tensor(new float[] {4.0f, 5.0f, 6.0f});
+
+// var result = torch.mul(tensor1, tensor2);
+var result = tensor1 * tensor2;
+result
+
+#!csharp
+
+var tensor1 = torch.tensor(new float[,] {
+    {2.0f, 4.0f},
+    {8.0f, 16.0f}
+});
+
+var tensor2 = torch.tensor(new float[,] {
+    {1.0f, 2.0f},
+    {3.0f, 4.0f}
+});
+
+// var result = tensor1.mul(tensor2);
+var result = tensor1 * tensor2;
+result
+
+#!markdown
+
+#### 4. Division
+
+#!markdown
+
+- **Description**: Element-wise division of two tensors.
+
+#!csharp
+
+var tensor = torch.tensor(new float[] {1.0f, 2.0f, 3.0f});
+var scalar = 10.0f;
+
+// var result = torch.div(tensor, scalar);
+var result = tensor / scalar;
+result
+
+#!csharp
+
+var tensor = torch.tensor(new int[] {1, 2, 3});
+int scalar = 10;
+
+// var result = torch.div(tensor, scalar);
+var result = tensor / scalar;
+result
+
+#!csharp
+
+var tensor = torch.tensor(new float[,] {
+    {1.0f, 2.0f},
+    {3.0f, 4.0f}
+});
+var scalar = 10.0f;
+
+// var result = torch.div(tensor, scalar);
+var result = tensor / scalar;
+result
+
+#!csharp
+
+var tensor1 = torch.tensor(new float[] {4.0f, 9.0f, 16.0f});
+var tensor2 = torch.tensor(new float[] {2.0f, 3.0f, 4.0f});
+
+// var result = torch.div(tensor1, tensor2);
+var result = tensor1 / tensor2;
+result
+
+#!markdown
+
+#### 5. Matrix Multiplication
+
+#!markdown
+
+- **Description**: Matrix product of two tensors.
+- **Usage**: Performs a matrix multiplication (dot product) between two tensors. This operation is not element-wise.
+
+Links:
+- https://www.mathsisfun.com/algebra/matrix-multiplying.html
+- http://matrixmultiplication.xyz/
+
+#!markdown
+
+##### Element-wise
+
+#!markdown
+
+- **Description**: Element-wise multiplication, also known as the Hadamard product, refers to multiplying corresponding elements of two tensors independently. The result is a tensor of the same shape as the input tensors, where each element is the product of the corresponding elements from the input tensors.
+- **Usage**: Used in various mathematical and machine learning operations where a point-by-point multiplication is required, such as scaling or weighting elements.
+
+#!csharp
+
+var vector1 = torch.tensor(new float[] {1.0f, 2.0f, 3.0f});
+var vector2 = torch.tensor(new float[] {4.0f, 5.0f, 6.0f});
+
+var result = vector1 * vector2; // result: 1*4 + 2*5 + 3*6 = [4f, 10f, 18f]
+result
+
+#!markdown
+
+##### Matrix multiplication and Dot Product
+
+#!markdown
+
+- **Description**: The dot product is an operation that takes two equal-length sequences of numbers (usually vectors) and returns a single number. Each corresponding pair of elements from the input vectors is multiplied together, and then all these products are summed up to produce the final result.
+- **Usage**: Commonly used in linear algebra, physics, and machine learning, particularly in operations involving vectors and projections.
+
+#!csharp
+
+var vector1 = torch.tensor(new float[] {1.0f, 2.0f, 3.0f});
+var vector2 = torch.tensor(new float[] {4.0f, 5.0f, 6.0f});
+
+// only works for 1D tensors
+// var result = torch.dot(vector1, vector2);
+
+var result = torch.matmul(vector1, vector2); // result: 1*4 + 2*5 + 3*6 = 32.0
+result
+
+#!csharp
+
+var tensor1 = torch.tensor(new float[,] {
+    {1.0f, 2.0f},
+    {3.0f, 4.0f}
+});
+
+var tensor2 = torch.tensor(new float[,] {
+    {5.0f, 6.0f},
+    {7.0f, 8.0f}
+});
+
+var result = torch.matmul(tensor1, tensor2); 
+result
+
+#!markdown
+
+##### Key Differences between element-wise and dot product
+
+#!markdown
+
+**Element-wise**
+- Each element in the resulting matrix is the product of the corresponding elements in the original matrices.
+- Element-wise Multiplication: Requires matrices of the same size, multiplies corresponding elements, resulting in a matrix of the same size.
+
+**Dot product**
+- The element in the resulting matrix at position $(i, j)$ is the sum of the products of the elements of the $(i)$-th row of the first matrix and the $(j)$-th column of the second matrix.
+- Dot Product (Matrix Multiplication): Requires the inner dimensions to match, involves summing the products of rows and columns, resulting in a matrix with dimensions determined by the outer dimensions of the multiplied matrices.
+
+#!markdown
+
+In the context of tensor operations, both `matmul` (matrix multiplication) and `dot` (dot product) are used for different types of multiplications. Here’s a detailed explanation of their differences:
+
+#!markdown
+
+##### `matmul` (Matrix Multiplication)
+
+#!markdown
+
+- **Description**: Performs a matrix multiplication between two tensors. The result is a new tensor where each element is computed as the dot product of rows and columns from the input matrices.
+- **Usage**: Used for multiplying 2-D matrices, higher-dimensional tensors, and batches of matrices.
+
+Dimensions:
+- **2-D tensors (matrices)**: matmul(A, B) performs matrix multiplication.
+- **1-D tensors (vectors)**: matmul(a, b) performs dot product.
+- **higher-dimensional tensors**: matmul broadcasts the dimensions and performs batch matrix multiplication.
+
+#!csharp
+
+var tensor1 = torch.tensor(new float[,] {
+    {1.0f, 2.0f},
+    {3.0f, 4.0f}}
+);
+
+var tensor2 = torch.tensor(new float[,] {
+    {5.0f, 6.0f},
+    {7.0f, 8.0f}
+});
+
+var result = torch.matmul(tensor1, tensor2); // result: [[19.0, 22.0], [43.0, 50.0]]
+result
+
+#!markdown
+
+##### `dot` (Dot Product)
+
+#!markdown
+
+- **Description**: Computes the dot product between two 1-D tensors (vectors). It multiplies corresponding elements and sums them up to return a single scalar value.
+- **Usage**: Used specifically for vector operations.
+
+#!csharp
+
+var vector1 = torch.tensor(new float[] {1.0f, 2.0f, 3.0f});
+var vector2 = torch.tensor(new float[] {4.0f, 5.0f, 6.0f});
+
+var result = torch.dot(vector1, vector2); // result: 1*4 + 2*5 + 3*6 = 32.0
+result
+
+#!markdown
+
+##### Vectorization and execution time
+
+#!markdown
+
+Comparison of Execution Time: Using Loop vs. Built-in Torch Functions
+
+#!csharp
+
+public void LoopMultiply()
+{
+        // Example 2-D tensor
+        var tensor = torch.tensor(new float[,] {
+            {1.0f, 2.0f},
+            {3.0f, 4.0f}}
+        );
+
+        var startTime = DateTime.Now;
+
+        float value = 0.0f;
+
+        // Compute the sum of squares for each element in the 2-D tensor
+        for (int i = 0; i < tensor.shape[0]; i++)
+        {
+            for (int j = 0; j < tensor.shape[1]; j++)
+            {
+                value += tensor[i, j].ToSingle() * tensor[i, j].ToSingle();
+            }
+        }
+
+        var elapsedTime = DateTime.Now - startTime;
+        Console.WriteLine($"Elapsed time: {elapsedTime.TotalMilliseconds} ms");
+}
+
+#!csharp
+
+public void MatMulMultiply()
+{
+        var tensor = torch.tensor(new float[,] {
+            {1.0f, 2.0f},
+            {3.0f, 4.0f}
+        });
+
+        // Timing the operation
+        var startTime = DateTime.Now;
+
+        // Perform matrix multiplication
+        var result = torch.matmul(tensor, tensor);
+
+        // Print the elapsed time
+        var elapsedTime = DateTime.Now - startTime;
+        Console.WriteLine($"Elapsed time: {elapsedTime.TotalMilliseconds} ms");
+}
+
+#!csharp
+
+LoopMultiply()
+
+#!csharp
+
+MatMulMultiply()
+
+#!markdown
+
+Vectorization is often used by the Torch library to speed up matrix multiplication.
+
+**What is Vectorization?**
+
+Vectorization is a technique where operations are applied simultaneously to a set of values (such as arrays or tensors), rather than iterating through each value individually. This is achieved by leveraging low-level optimizations and hardware capabilities, such as SIMD (Single Instruction, Multiple Data) instructions, which allow multiple data points to be processed in parallel. By reducing the need for explicit loops and taking advantage of parallel processing, vectorization significantly enhances computational efficiency and performance.
+
+
+Link: 
+1. Vectorization (mathematics) - https://en.wikipedia.org/wiki/Vectorization_(mathematics)
+2. Vectorization and Kronecker Products - https://www.youtube.com/watch?v=5VrcwGJSoLQ
+
+#!markdown
+
+#### Rules for Matrix Multiplication: 
+
+#!markdown
+
+##### Inner Dimensions Must Match
+
+#!markdown
+
+In matrix multiplication, the number of columns in the first matrix must be equal to the number of rows in the second matrix. This is known as the inner dimensions matching rule. 
+
+When multiplying two matrices \( A \) and \( B \), where \( A \) is of shape \( (m x n) \) and \( B \) is of shape \( (p x q) \), the multiplication is possible only if \( n = p \). The resulting matrix \( C \) will have the shape \( (m x q) \).
+
+This rule ensures that each element of the resulting matrix is computed by taking the dot product of the corresponding row from the first matrix and the corresponding column from the second matrix. If the inner dimensions do not match, the dot product is undefined.
+
+#!csharp
+
+var A = torch.tensor(new float[,] {
+    {1.0f, 2.0f, 3.0f},
+    {4.0f, 5.0f, 6.0f}
+}); // Shape: (2, 3)
+
+var B = torch.tensor(new float[,] {
+    {7.0f, 8.0f},
+    {9.0f, 10.0f},
+    {11.0f, 12.0f}
+}); // Shape: (3, 2)
+
+var result = torch.matmul(A, B);
+result
+
+#!csharp
+
+// This won't work
+// result = torch.matmul(torch.rand(2, 3), torch.rand(2, 3));
+// result
+
+#!markdown
+
+##### The Resulting Matrix Has the Shape of the Outer Dimensions
+
+#!markdown
+
+In matrix multiplication, the shape of the resulting matrix is determined by the outer dimensions of the two input matrices. Specifically, if you multiply a matrix $A$ of shape $(m \times n)$ by a matrix $B$ of shape $(n \times p)$, the resulting matrix $C$ will have the shape $(m \times p)$.
+
+This rule arises from the definition of matrix multiplication, where each element of the resulting matrix is calculated as the dot product of a row from the first matrix and a column from the second matrix. The outer dimensions $m$ and $p$ correspond to the number of rows in the first matrix and the number of columns in the second matrix, respectively.
+
+#!csharp
+
+var A = torch.tensor(new float[,] {
+    {1.0f, 2.0f, 3.0f},
+    {4.0f, 5.0f, 6.0f}
+}); // Shape: (2, 3)
+
+var B = torch.tensor(new float[,] {
+    {7.0f, 8.0f},
+    {9.0f, 10.0f},
+    {11.0f, 12.0f}
+}); // Shape: (3, 2)
+
+// (2 x 3 matrix) * (3 x 2 matrix) = (2 x 2 matrix)
+
+var result = torch.matmul(A, B); // Resulting shape: (2, 2)
+result
+
+#!csharp
+
+result = torch.matmul(torch.rand(2, 1000), torch.rand(1000, 2));
+result
+
+#!csharp
+
+// Outer dimennsions don't have to match
+result = torch.matmul(torch.rand(1, 1000), torch.rand(1000, 5));
+result
+
+#!markdown
+
+##### Reminder
+
+#!markdown
+
+Matrix Multiplication - http://matrixmultiplication.xyz/
+
+#!markdown
+
+#### Broadcasting
+
+#!markdown
+
+Broadcasting is a technique used in tensor operations to allow element-wise operations on tensors of different shapes. It simplifies mathematical operations on tensors without needing to explicitly reshape them.
+
+**Shape Compatibility**
+- Two tensors are compatible for broadcasting if, for each dimension, the dimensions are either the same, one of them is 1, or one of the dimensions does not exist.
+
+**Dimension Expansion**
+- If one of the tensors has fewer dimensions than the other, it is automatically expanded by adding new axes on the left (i.e., dimensions of size 1) to match the shape of the larger tensor.
+
+**Element-wise Operations**
+- Broadcasting allows element-wise operations (such as addition, subtraction, multiplication, etc.) to be performed on tensors by replicating the smaller tensor across the larger tensor.
+
+**Example**
+
+Consider two tensors:
+
+Tensor A of shape (3, 1):
+```lua
+[[1],
+ [2],
+ [3]]
+```
+
+Tensor B of shape (1, 4):
+```lua
+[[10, 20, 30, 40]]
+```
+
+When broadcasting these tensors for an addition operation, Tensor A will be broadcasted to shape (3, 4):
+```lua
+[[1, 1, 1, 1],
+ [2, 2, 2, 2],
+ [3, 3, 3, 3]]
+```
+
+Tensor B will be broadcasted to shape (3, 4):
+```lua
+[[10, 20, 30, 40],
+ [10, 20, 30, 40],
+ [10, 20, 30, 40]]
+```
+
+Result of the addition operation:
+```lua
+[[11, 21, 31, 41],
+ [12, 22, 32, 42],
+ [13, 23, 33, 43]]
+```
+
+#!csharp
+
+var tensorA = torch.tensor(new float[,] { { 1 }, { 2 }, { 3 } });
+var tensorB = torch.tensor(new float[,] { { 10, 20, 30, 40 } });
+
+#!csharp
+
+Console.WriteLine(tensorA.ToString(TensorStringStyle.CSharp));
+
+#!csharp
+
+Console.WriteLine(tensorB.ToString(TensorStringStyle.CSharp));
+
+#!csharp
+
+var res = tensorA + tensorB;
+
+#!csharp
+
+Console.WriteLine(res.ToString(TensorStringStyle.CSharp));
+
+#!markdown
+
+### Dealing with tensors shape errors
+
+#!markdown
+
+#### Transpose
+
+The transpose of a matrix (or tensor) is an operation that flips the matrix over its diagonal, swapping the row and column indices of each element. For a matrix $A$ with shape $(m \times n)$, its transpose $A^T$ will have a shape $(n \times m)$.
+
+**Correcting Shape Errors in Multiplication**:
+
+When performing matrix multiplication, the inner dimensions of the matrices must match. If they do not, you can use the transpose operation to adjust the shapes accordingly. For example, if you have matrices $A$ with shape $(m \times n)$ and $B$ with shape $(p \times q)$ and $n \neq p$, you can transpose $B$ to get a shape $(q \times p)$ and then multiply $A$ by $B^T$ if $n = q$.
+
+#!csharp
+
+// example from one of the above cells
+//result = torch.matmul(torch.rand(2, 3), torch.rand(2, 3));
+
+//Console.WriteLine(result.ToString(TensorStringStyle.Numpy));
+
+#!csharp
+
+var tensor_A = torch.ones(2, 3);
+var tensor_B = torch.ones(2, 3);
+
+#!csharp
+
+// element-wise multiplication is valid for tensor of the same shape or shapes that can be broadcasted
+tensor_A /*(2, 3)*/ * tensor_B /*(2, 3)*/
+
+#!csharp
+
+// transpose one of the tensors to perform matrix multiplication
+var tensor_AB = torch.matmul(tensor_A, tensor_B.T);
+tensor_AB
+
+#!csharp
+
+tensor_B
+
+#!csharp
+
+tensor_B.shape
+
+#!csharp
+
+tensor_B.T
+
+#!csharp
+
+tensor_B.T.shape
+
+#!csharp
+
+var ordered = torch.tensor(new float[,] {
+    {1.0f, 2.0f, 3.0f},
+    {4.0f, 5.0f, 6.0f},
+    {7.0f, 8.0f, 9.0f}
+});
+
+Console.WriteLine(ordered.ToString(TensorStringStyle.Numpy));
+
+#!markdown
+
+### Tensor aggregation - Min, Max, Mean, and Sum
+
+#!markdown
+
+#### Min
+- **Description**: The `min` operation returns the smallest value within the tensor.
+- **Usage**: It is often used to find the minimum value for normalization, thresholding, or identifying the lower bound of a dataset.
+
+#!csharp
+
+var tensor = torch.tensor(new float[] {1.0f, 2.0f, 3.0f, 4.0f});
+var minValue = tensor.min();
+minValue // Outputs: 1.0
+
+#!csharp
+
+tensor.argmin()
+
+#!markdown
+
+#### Max
+- **Description**: The `max` operation returns the largest value within the tensor.
+- **Usage**: It is used to find the maximum value for normalization, thresholding, or identifying the upper bound of a dataset.
+
+#!csharp
+
+var tensor = torch.tensor(new float[] {1.0f, 2.0f, 3.0f, 4.0f});
+var maxValue = tensor.max();
+maxValue // Outputs: 4.0
+
+#!csharp
+
+tensor.argmax()
+
+#!markdown
+
+#### Mean
+- **Description**: The `mean` operation calculates the average value of all elements in the tensor.
+- **Usage**: It is commonly used for calculating the average of a dataset, for normalization, or for determining the central tendency.
+
+#!csharp
+
+var tensor = torch.tensor(new float[] {1.0f, 2.0f, 3.0f, 4.0f});
+var meanValue = tensor.mean();
+meanValue // Outputs: 2.5
+
+#!csharp
+
+// Mean operation cannot be performed on integer tensors
+var tensor = torch.tensor(new int[] {1, 2, 3, 4}); //.to(torch.ScalarType.Float32);
+var meanValue = tensor.mean();
+// var meanValue = tensor.mean([], true, torch.ScalarType.Float32);
+meanValue
+
+#!markdown
+
+#### Sum
+- **Description**: The `sum` operation returns the total sum of all elements in the tensor.
+- **Usage**: It is used for aggregation, such as summing up the total values of a dataset, and is often used in loss calculations and other aggregative measures.
+
+#!csharp
+
+var tensor = torch.tensor(new float[] {1.0f, 2.0f, 3.0f, 4.0f});
+var sumValue = tensor.sum();
+sumValue // Outputs: 10.0
+
+#!markdown
+
+#### Summary
+
+#!markdown
+
+- **Normalization**: 
+  - **Explanation**: Scaling data to a specific range, typically [0, 1] or [-1, 1], to ensure that different features contribute equally to the model.
+  - **Usage**: `min` and `max` are used to scale data to a specific range.
+
+- **Thresholding**: 
+  - **Explanation**: Setting cutoff values to filter data, allowing only the values that meet specific criteria to be retained.
+  - **Usage**: `min` and `max` help in setting thresholds for filtering data.
+
+- **Central Tendency**: 
+  - **Explanation**: Determining the central or typical value within a dataset, which helps in summarizing the data.
+  - **Usage**: `mean` helps in understanding the central value of a dataset.
+
+- **Aggregation**: 
+  - **Explanation**: Summing or combining multiple values into a single value to provide a summary or total measure.
+  - **Usage**: `sum` is used to compute the total value of all elements, which is useful in various aggregation tasks.
+
+#!markdown
+
+### Tensor Operations: Reshaping, Squeezing, Unsqueezing, and Stacking
+
+#!markdown
+
+#### Reshaping
+- `Reshaping` changes the shape of a tensor without changing its data. This operation is useful for preparing tensors for various operations that require specific shapes.
+
+#!csharp
+
+var tensor = torch.tensor(new float[] {1, 2, 3, 4, 5, 6});
+tensor
+
+#!csharp
+
+var reshapedTensor = tensor.reshape(new long[] {1, 6});
+reshapedTensor
+
+#!csharp
+
+var reshapedTensor = tensor.reshape(new long[] {6, 1});
+reshapedTensor
+
+#!csharp
+
+var reshapedTensor = tensor.reshape(new long[] {2, 3});
+reshapedTensor
+
+#!csharp
+
+var reshapedTensor = tensor.reshape(new long[] {3, 2});
+reshapedTensor
+
+#!markdown
+
+#### View
+
+#!markdown
+
+The `view` operation reshapes a tensor to a specified shape while keeping the same data and number of elements. It requires that the original tensor is stored in a contiguous block of memory. The resulting tensor shares the same underlying data with the original tensor, so any changes to one will affect the other.
+
+##### Contiguous Memory Layout in Tensors
+
+- **Default Behavior:** When you initially create a tensor using methods like `torch.tensor`, the data is typically stored in a contiguous block of memory. This means that all elements of the tensor are laid out sequentially in memory without any gaps.
+
+- **Non-contiguous Tensors:** Some operations, such as slicing, transposing, or reshaping (without making a copy), can produce tensors that are not contiguous. In these cases, the tensor might reference the original data but with strides that skip over elements, leading to a non-contiguous memory layout.
+
+- **Checking Contiguity:** You can check if a tensor is contiguous using the `.is_contiguous()` method. If the tensor is not contiguous, you can make it contiguous by calling the `.contiguous()` method, which returns a new tensor that is a contiguous copy of the original data.
+
+- **Memory Allocation Failure:** If a contiguous memory block is not available, the allocation of a tensor may fail even if there is enough total fragmented memory available. This is because the tensor requires a single contiguous block of memory for storage.
+
+#!csharp
+
+var tensor = torch.tensor(new float[] {1, 2, 3, 4, 5, 6});
+tensor
+
+#!csharp
+
+var viewedTensor = tensor.view(new long[] {2, 3});
+viewedTensor
+
+#!csharp
+
+// The data is shared between the original tensor and the viewed tensor, but in this case we can't see effect of multiplication - why?
+tensor = tensor * 2;
+viewedTensor
+
+#!markdown
+
+When you use the `view` operation, it creates a new tensor that shares the same underlying data with the original tensor. However, if you reassign the original tensor (e.g., `tensor = tensor * 2`), a new tensor object is created, and the original data is no longer referenced. Therefore, changes made after reassignment do not affect the viewed tensor. To reflect changes in the viewed tensor, modify the original tensor's data in place before reassignment.
+
+#!csharp
+
+var tensor_in_place = torch.tensor(new float[] {1, 2, 3, 4, 5, 6});
+tensor_in_place
+
+#!csharp
+
+var viewedTensor = tensor_in_place.view(new long[] {2, 3});
+viewedTensor
+
+#!csharp
+
+tensor_in_place.mul_(2);
+viewedTensor
+
+#!markdown
+
+#### Permute
+- **Description**: The `permute` operation rearranges the dimensions of a tensor in a specified order. Like `view`, the `permute` operation shares the same underlying memory with the original tensor. This is useful for changing the order of dimensions to match the required input format for various operations or models.
+
+#!csharp
+
+var tensor = torch.rand(2, 3, 5);
+tensor.shape
+
+#!csharp
+
+Console.WriteLine(tensor.ToString(TensorStringStyle.Numpy));
+
+#!csharp
+
+var permutedTensor = tensor.permute(2, 0, 1);
+permutedTensor.shape
+
+#!csharp
+
+var image_tensor = torch.rand(256, 256, 3); // 3 channels RGB image of size 256x256 (height x width, channels)
+image_tensor.shape
+
+#!csharp
+
+var image_permuted = image_tensor.permute(2, 0, 1); // permute the dimensions to (channels, height, width)
+image_permuted.shape
+
+#!markdown
+
+#### Squeezing
+- `Squeezing` removes dimensions (all) of size 1 from a tensor. This is useful for eliminating unnecessary dimensions.
+
+#!csharp
+
+var tensor = torch.tensor(new float[,,] {
+    {
+        {1}, {2}, {3}
+    },
+    {
+        {4}, {5}, {6}
+    }});
+tensor
+
+#!csharp
+
+var squeezedTensor = tensor.squeeze();
+squeezedTensor
+
+#!markdown
+
+#### Unsqueezing
+- `Unsqueezing` adds a dimension of size 1 to a tensor at a specific dimension. This is useful for aligning tensors for operations that require specific dimensions.
+
+#!csharp
+
+var tensor = torch.tensor(new float[] {1, 2, 3, 4});
+tensor
+
+#!csharp
+
+var unsqueezedTensor = tensor.unsqueeze(0);
+unsqueezedTensor
+
+#!markdown
+
+#### Stacking
+- `Stacking` joins a sequence of tensors along a new dimension. This is useful for combining multiple tensors into one while adding an additional dimension.
+
+#!csharp
+
+var tensor1 = torch.tensor(new float[] {1, 2, 3});
+tensor1
+
+#!csharp
+
+var tensor2 = torch.tensor(new float[] {4, 5, 6});
+tensor2
+
+#!csharp
+
+var stackedTensor = torch.stack(new[] {tensor1, tensor2}, 0);
+stackedTensor
+
+#!csharp
+
+var stackedTensor = torch.stack(new[] {tensor1, tensor2}, 1);
+stackedTensor
+
+#!csharp
+
+torch.vstack(new[] {tensor1, tensor2})
+
+#!csharp
+
+torch.hstack(new[] {tensor1, tensor2})
+
+#!markdown
+
+### Indexing Tensors
+
+#!markdown
+
+Indexing tensors allows you to access and modify specific elements, rows, columns, or sub-tensors within a tensor. It is a powerful feature for slicing, selecting, and manipulating data within tensors.
+
+- **Basic Indexing**: Directly accessing elements using indices.
+- **Slicing**: Accessing ranges of elements.
+- **Advanced Indexing**: Using conditions or index tensors for selection.
+
+#!markdown
+
+#### Basic Indexing
+
+#!csharp
+
+var tensor = torch.tensor(new float[,] {
+    {1, 2, 3},
+    {4, 5, 6}
+});
+
+var element = tensor[0, 1];
+element
+
+#!markdown
+
+#### Slicing
+
+#!markdown
+
+##### index_select
+- **Description**: The `index_select` function selects elements from a tensor along a specified dimension using a tensor of indices. It is useful for advanced indexing and selecting specific rows or columns.
+- **Usage**: `tensor.index_select(dim, indices)`
+  - **`dim`**: The dimension along which to narrow the tensor.
+  - **`indices`**: A tensor containing the indices of the elements to be selected.
+
+#!csharp
+
+var tensor = torch.tensor(new float[,] {
+    {1, 2, 3},
+    {4, 5, 6}
+});
+
+var slice = tensor.index_select(1, torch.tensor(new long[] {0, 2}));
+slice
+
+#!markdown
+
+##### Narrow
+- **Description**: The `narrow` function selects a narrow slice of a tensor along a specified dimension. It is useful for extracting a contiguous block of elements from a tensor.
+- **Usage**: `tensor.narrow(dim, start, length)`
+  - **`dim`**: The dimension along which to narrow the tensor.
+  - **`start`**: The starting index of the slice.
+  - **`length`**: The number of elements to include in the slice.
+
+#!csharp
+
+var tensor = torch.tensor(new float[,] {
+    {1, 2, 3},
+    {4, 5, 6},
+    {7, 8, 9}
+});
+var slice = tensor.narrow(0, 0, 2);
+slice
+
+#!markdown
+
+#### Advanced Indexing
+
+#!markdown
+
+##### Masked Select
+- **Description**: The `masked_select` function selects elements from a tensor that meet a specified condition defined by a mask. This is useful for filtering elements based on certain criteria.
+- **Usage**: `tensor.masked_select(mask)`
+  - **`mask`**: A boolean tensor of the same shape as the original tensor, where `true` indicates that the element at that position should be selected.
+
+#!csharp
+
+var tensor = torch.tensor(new float[,] {
+    {1, 2, 3},
+    {4, 5, 6}
+});
+
+var mask = tensor > 3;
+mask
+
+#!csharp
+
+var selected = tensor.masked_select(mask);
+selected

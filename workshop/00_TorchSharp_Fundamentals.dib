@@ -1,0 +1,759 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+
+#!markdown
+
+### Environment setup
+
+#!csharp
+
+#i "nuget: https://api.nuget.org/v3/index.json"
+#r "nuget: TorchSharp-cpu, 0.102.6"
+#r "nuget: libtorch-cpu-win-x64, 2.2.1.1"
+#r "nuget: System.Drawing.Common"
+
+#!csharp
+
+using TorchSharp;
+using static TorchSharp.TensorExtensionMethods;
+
+#!csharp
+
+using System;
+using System.Drawing;
+using System.Drawing.Imaging;
+
+#!csharp
+
+Console.WriteLine($"TorchSharp version: {torch.__version__}");
+Console.WriteLine($"CLR version: {System.Environment.Version}");
+Console.WriteLine($"CUDA available: {torch.cuda.is_available()}");
+Console.WriteLine($"GPU count: {torch.cuda.device_count()}");
+
+// Set the default tensor string style to C#.
+torch.TensorStringStyle = torch.csharp;
+
+// Set the device to CUDA if available, otherwise CPU.
+var device = torch.cuda.is_available() ? torch.CUDA : torch.CPU;
+
+Console.WriteLine($"Device: {device}, Style: {torch.TensorStringStyle}");
+
+#!markdown
+
+### Creating tensors
+
+#!markdown
+
+1. What is Tensor? - https://www.youtube.com/watch?v=f5liqUk0ZTw
+2. Docs - https://pytorch.org/docs/stable/tensors.html
+
+#!csharp
+
+// scalar
+var scalar = torch.tensor(42, dtype: torch.int64, device: device, requires_grad: false);
+Console.WriteLine(scalar.item<Int64>());
+
+#!csharp
+
+scalar.ndim
+
+#!csharp
+
+scalar.shape
+
+#!csharp
+
+// Vector
+var vector = torch.tensor(new long[] { 42, 42 });
+vector.data<long>().ToList<long>().ForEach(Console.WriteLine);
+
+#!csharp
+
+vector.ndim
+
+#!csharp
+
+vector.shape
+
+#!csharp
+
+// MATRIX
+var matrix = torch.tensor(new long[,] {
+    { 42, 42 },
+    { 43, 43 }
+});
+matrix
+
+#!csharp
+
+matrix.ndim
+
+#!csharp
+
+matrix.shape
+
+#!csharp
+
+matrix[0]
+
+#!csharp
+
+// tensor
+var tensor = torch.tensor(new long[,,] { 
+    { 
+        { 42, 42 },
+        { 43, 43 },
+        { 44, 44 }
+    },
+    { 
+        { 44, 44 },
+        { 45, 45 },
+        { 46, 46 } 
+    } 
+    });
+
+Console.WriteLine(tensor.ToString(TensorStringStyle.CSharp));
+
+#!csharp
+
+tensor.ndim
+
+#!csharp
+
+tensor.shape
+
+#!csharp
+
+tensor[0][1]
+// Console.WriteLine(tensor.ToString(TensorStringStyle.Numpy));
+// tensor.data<long>().ToList<long>().ForEach(Console.WriteLine);
+
+#!markdown
+
+### Random Tensors
+
+#!markdown
+
+**Common Reasons to Use Random Tensors**
+
+**1. Weight Initialization**
+- **Random Initialization**: Neural networks often start with weights initialized to small random values. This breaks symmetry and allows the network to learn diverse features during training.
+- **Avoiding Zero Gradients**: Initializing all weights to zero can cause neurons to learn the same features, leading to zero gradients during backpropagation. Random initialization helps avoid this problem.
+
+**2. Testing and Debugging**
+- **Synthetic Data**: Random tensors can be used to generate synthetic data for testing and debugging models. This helps ensure that the model architecture and data pipeline are working correctly.
+- **Stress Testing**: Random inputs can be used to stress test the robustness and stability of models.
+
+**3. Regularization**
+- **Dropout**: Random tensors are used in dropout regularization, where random neurons are turned off during training to prevent overfitting. This helps the network generalize better to unseen data.
+- **Data Augmentation**: Random perturbations to input data (e.g., adding noise) can act as a form of regularization and improve model robustness.
+
+**4. Simulations and Probabilistic Models**
+- **Stochastic Processes**: Random tensors are used to simulate stochastic processes and probabilistic models, which are essential in fields like reinforcement learning and Bayesian inference.
+- **Monte Carlo Methods**: Random sampling is a core component of Monte Carlo methods used for numerical integration and optimization.
+
+**5. Randomized Algorithms**
+- **Random Search**: Random tensors can be used in randomized algorithms such as random search for hyperparameter optimization, where random configurations of hyperparameters are tested to find the best performing model.
+- **Random Projections**: Used to reduce dimensionality of data while preserving distances between points, useful in techniques like Locality-Sensitive Hashing (LSH)
+
+#!markdown
+
+Links:
+1. torch.rand - https://pytorch.org/docs/stable/generated/torch.rand.html
+
+#!csharp
+
+// Create a random tensor of size [3,4]
+var rand_tensor = torch.rand(3, 4);
+var rand_tensor_1 = torch.rand(size: new long[] { 3, 4 });
+rand_tensor_1
+
+#!csharp
+
+rand_tensor.ndim
+
+#!csharp
+
+rand_tensor.shape
+
+#!markdown
+
+#### Image Tensors
+
+#!markdown
+
+<style>
+  .container {
+    text-align: center;
+  }
+
+  .main-image {
+    width: 30%;
+    height: auto;
+  }
+
+  .row {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+  }
+
+  .row img {
+    margin: 0 10px;
+    width: 20%;
+    height: auto;
+  }
+</style>
+
+<div class="container">
+  <img src="../assets/rgb_example.png" alt="Main Image" class="main-image">
+  <div class="row">
+    <img src="../assets/red_channel.png" alt="Red Channel">
+    <img src="../assets/green_channel.png" alt="Green Channel">
+    <img src="../assets/blue_channel.png" alt="Blue Channel">
+  </div>
+</div>
+
+#!markdown
+
+#### Random image Tensor
+
+#!csharp
+
+// Random tensor with similar shape to an image tensor (channels(R,G,B), height, width)
+var image_tensor = torch.rand(3, 256, 256);
+image_tensor
+
+#!csharp
+
+void SaveTensorAsImage(torch.Tensor tensor, string outputImagePath)
+{
+    var shape = tensor.shape.ToArray<long>();
+    var height = shape[1];
+    var width = shape[2];
+
+    using (var bitmap = new Bitmap((int)width, (int)height))
+    {
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int r = (int)(tensor[0, y, x].ToSingle() * 255);
+                int g = (int)(tensor[1, y, x].ToSingle() * 255);
+                int b = (int)(tensor[2, y, x].ToSingle() * 255);
+
+                bitmap.SetPixel(x, y, Color.FromArgb(r, g, b));
+            }
+        }
+        bitmap.Save(outputImagePath, ImageFormat.Png);
+    }
+}
+
+#!csharp
+
+string outputImagePath = "C:\\src\\gft-ai\\assets\\generated_image.png";
+
+#!csharp
+
+SaveTensorAsImage(image_tensor, outputImagePath);
+
+#!csharp
+
+image_tensor.size()
+
+#!markdown
+
+#### Reproducybility
+
+#!markdown
+
+Reproducibility refers to the ability to consistently reproduce the same results using the same procedures. In the context of random tensors, it means generating the same random numbers every time the code is run, given the same initial conditions.
+
+Reproducibility is crucial in scientific research and machine learning for:
+- **Verification**: Ensuring that experiments and results can be independently verified by others.
+- **Debugging**: Making it easier to debug and understand code behavior.
+- **Comparisons**: Allowing fair comparisons between different models or algorithms.
+
+In random tensor generation, reproducibility is typically achieved by setting a random seed. A random seed initializes the random number generator to a specific state, ensuring that the same sequence of random numbers is generated each time.
+
+#!csharp
+
+// torch.manual_seed(42);
+var randomTensor_1 = torch.rand(new long[] {3, 3});
+
+#!csharp
+
+// torch.manual_seed(42);
+var randomTensor_2 = torch.rand(new long[] {3, 3});
+
+#!markdown
+
+**Interactive Notebook Environment**
+
+In interactive notebooks (e.g., Jupyter notebooks, Polyglot notebooks), the state of the random number generator can be altered by other cells or processes. To ensure reproducibility, it is recommended to reset the random seed before each method call that generates random tensors. This practice ensures that each cell generates the same random numbers every time it is run.
+
+#!csharp
+
+randomTensor_1
+
+#!csharp
+
+randomTensor_2
+
+#!csharp
+
+// compare element-wise
+torch.eq(randomTensor_1, randomTensor_2)
+
+#!csharp
+
+randomTensor_1 == randomTensor_2
+
+#!markdown
+
+### Zeros and Ones
+
+#!markdown
+
+**Common Reasons to Use Zero and Ones Tensors**
+
+**1. Initialization**
+- **Zero Initialization**: Used to initialize biases in neural networks. Starting biases as zeros ensures that the initial predictions are neutral and don't bias the network towards any particular direction.
+- **One Initialization**: Sometimes used to initialize certain parameters, especially in batch normalization layers, where initializing the scaling parameter (gamma) to one can be beneficial.
+
+**2. Placeholders**
+- **Zeros Tensors**: Serve as placeholders or masks. For example, in RNNs, zero tensors are often used to pad sequences to ensure they all have the same length.
+- **Ones Tensors**: Can be used as masks or to initialize parameters that should start with equal contribution, such as weights or scaling factors.
+
+**3. Operations**
+- **Zeros Tensors**: Can represent the absence of a feature or be used to reset states in certain algorithms.
+- **Ones Tensors**: Often used in element-wise multiplications to maintain the same values or in adding operations to increment values uniformly.
+
+**4. Testing and Debugging**
+- **Zeros Tensors**: Useful for testing parts of the model where the influence of certain parameters needs to be negated.
+- **Ones Tensors**: Helpful in ensuring that operations are functioning correctly without altering the magnitudes of the inputs.
+
+**5. Padding and Normalization**
+- **Zeros Tensors**: Frequently used for padding in convolutional neural networks to maintain the spatial dimensions of the input.
+- **Ones Tensors**: Can be used in normalization techniques to ensure values are scaled appropriately.
+
+In summary, zero and ones tensors are versatile tools in machine learning, serving various roles from initialization and padding to testing and normalization.
+
+#!csharp
+
+var zeros = torch.zeros(3, 256, 256);
+zeros
+
+#!csharp
+
+var ones = torch.ones(3, 256, 256);
+ones
+
+#!markdown
+
+### Range of tensors and tensors-like
+
+#!csharp
+
+var rangeTensor = torch.arange(1, 10);
+rangeTensor
+
+#!csharp
+
+var rangeStepTensor = torch.arange(1, 11, step: 1);
+rangeStepTensor
+
+#!csharp
+
+rangeStepTensor.size()
+
+#!csharp
+
+rangeStepTensor.shape
+
+#!csharp
+
+var zerosLike = torch.zeros_like(input: rangeStepTensor);
+zerosLike
+
+#!csharp
+
+var onesLike = torch.ones_like(rangeStepTensor);
+onesLike
+
+#!markdown
+
+**Real-Life Example**
+
+#!csharp
+
+// random seed
+torch.manual_seed(42);
+
+// Define a threshold
+float threshold = 0.5f;
+        
+// Create a random image tensor (3x3 image with values between 0 and 1)
+var image = torch.rand(new long[] { 3, 3 });
+
+Console.WriteLine("Original Image:");
+Console.WriteLine(image.ToString(TensorStringStyle.Numpy));
+
+#!csharp
+
+// Create a mask using torch.zeros and set elements above the threshold to 1
+var mask = torch.zeros(new long[] { 3, 3 });
+mask = mask.where(image > threshold, torch.ones_like(mask));
+
+Console.WriteLine("Mask Tensor:");
+Console.WriteLine(mask.ToString(TensorStringStyle.Numpy));
+
+#!csharp
+
+// Apply the mask to the image
+var maskedImage = image * mask;
+
+Console.WriteLine("Masked Image:");
+Console.WriteLine(maskedImage.ToString(TensorStringStyle.Numpy));
+
+#!csharp
+
+// Select elements using the mask
+var selectedElements = image.masked_select(mask.to(torch.ScalarType.Bool));
+
+Console.WriteLine("Selected Elements (masked_select):");
+Console.WriteLine(selectedElements.ToString(TensorStringStyle.Numpy));
+
+#!markdown
+
+### Tensor datatypes
+
+#!markdown
+
+- https://en.wikipedia.org/wiki/Precision_(computer_science)
+
+#!markdown
+
+**Common Tensor Data Types in TorchSharp**
+
+**1. Float Tensors**
+- **Default Choice**: `torch.float32` (or `float`) is the default data type for tensors in TorchSharp. It provides a good balance between precision and memory consumption, making it ideal for most neural network tasks.
+- **Higher Precision**: For tasks requiring higher precision, `torch.float64` (or `double`) can be used, although it consumes more memory and computational resources.
+
+**2. Integer Tensors**
+- **Basic Integer Types**: `torch.int32` (or `int`) and `torch.int64` (or `long`) are used for integer-based operations. `int32` is sufficient for most indexing and counting tasks, while `int64` is useful for large-scale tasks requiring higher integer limits.
+- **Byte Tensors**: `torch.uint8` (or `byte`) is used for binary operations, such as masks and boolean indexing.
+
+**3. Boolean Tensors**
+- **Logical Operations**: `torch.bool` is specifically designed for tensors used in logical operations and conditions, like masks in selection operations or results from comparison operations.
+
+**4. Half-Precision Tensors**
+- **Memory Efficiency**: `torch.float16` (or `half`) offers reduced memory consumption and faster computation compared to `float32`, particularly useful in training large models on GPUs with limited memory.
+- **Training with Mixed Precision**: Often used in mixed precision training to leverage the benefits of both `float16` for forward and backward passes and `float32` for parameter updates.
+
+**5. Complex Tensors**
+- **Complex Number Operations**: `torch.complex64` and `torch.complex128` are used for operations involving complex numbers, providing support for real and imaginary parts.
+
+**6. Tensor Conversion**
+- **Type Casting**: Tensors can be converted from one type to another using methods like `.toType()` or `.astype()`, ensuring compatibility with different operations and precision requirements.
+- **Automatic Type Promotion**: TorchSharp automatically promotes tensor types in mixed-type operations to prevent precision loss, for example, performing operations between `float32` and `int32` will promote the result to `float32`.
+
+**7. Special Data Types**
+- **Quantized Tensors**: `torch.qint8`, `torch.quint8`, etc., are used for quantized models, which are essential for reducing the model size and increasing inference speed, particularly on mobile and embedded devices.
+- **BFloat16**: `torch.bfloat16` is a special 16-bit floating-point format that is efficient for training deep learning models, especially on TPUs and certain GPUs.
+
+In summary, TorchSharp provides a variety of tensor data types to cater to different computational needs and precision requirements. Choosing the appropriate data type is crucial for optimizing performance and memory usage in machine learning and deep learning applications.
+
+#!csharp
+
+// float32
+var floatTensor = torch.tensor(new float[] { 1.0f, 2.0f, 3.0f }, dtype: torch.float32);
+floatTensor
+
+#!csharp
+
+// float16
+var float16Tensor = torch.tensor(new float[] { 1.0f, 2.0f, 3.0f }, dtype: torch.float16);
+float16Tensor
+
+#!csharp
+
+float16Tensor.dtype
+
+#!csharp
+
+// Convert the float16 tensor to a new tensor fo type float32 for display - .Net does not support float16
+var float32Tensor = float16Tensor.to(torch.float32);
+float32Tensor
+
+#!csharp
+
+// Converts `float16Tensor` to a new tensor of type `float32` and retrieves its data type.
+var newFloat32Tensor = float16Tensor.type(torch.float32);
+newFloat32Tensor.dtype
+
+#!markdown
+
+#### Difference Between `.to()` and `.type()` Function Calls
+
+The difference between the `.to()` and `.type()` function calls in the context of tensor libraries like PyTorch (and by extension, TorchSharp, which follows a similar API for .NET) primarily lies in their usage and flexibility:
+
+##### 1. `.to()` Method
+- **Purpose**: The `.to()` method is more versatile and is used for changing not just the data type of a tensor, but also its device (e.g., from CPU to GPU) and layout (e.g., sparse vs dense).
+- **Usage**: You can use `.to()` to perform multiple changes in a single call, such as changing the data type while moving a tensor to a different computing device.
+- **Example**: `tensor.to(torch.float32)` changes the data type to `float32`, and `tensor.to(device='cuda')` moves the tensor to a CUDA-compatible GPU.
+
+##### 2. `.type()` Method
+- **Purpose**: The `.type()` method is specifically used for changing the data type of a tensor. It's a bit more straightforward if you only need to change the data type and nothing else.
+- **Usage**: It's used when the intention is solely to convert the tensor's data type without altering its device or layout.
+- **Example**: `tensor.type(torch.float32)` changes the data type to `float32`.
+
+Both methods return a new tensor with the specified changes and do not modify the original tensor in-place. The choice between `.to()` and `.type()` can depend on your specific needs: use `.to()` for more general transformations including device and layout changes, and `.type()` when you only need to change the data type.
+
+#!markdown
+
+### Tensor informations
+
+#!markdown
+
+#### Device
+
+The call `float16Tensor.device` is used to determine the device on which the tensor is currently allocated. This can be a CPU or a specific GPU. Understanding the device context is crucial for operations that involve tensors, especially in environments with multiple devices, to ensure that computations are performed on the intended hardware.
+
+- **Example**: If `float16Tensor` is allocated on a CUDA-compatible GPU, `float16Tensor.device` will return `cuda:0` (assuming it's the first GPU).
+
+Some implementations of TorchSharp show the index -1 if the tensor is placed on the CPU, whereas the default behavior in PyTorch should only show "CPU".
+
+#!csharp
+
+float16Tensor.device
+
+#!markdown
+
+#### size() & shape
+
+In the context of tensor libraries like PyTorch and TorchSharp, the terms "size" and "shape" are often used interchangeably, but they essentially refer to the same concept: the dimensions of the tensor. 
+
+- **Size**: This term typically refers to the dimensions of the tensor along each axis. When you call a tensor's `size()` method, it returns a tuple or list representing the number of elements in each dimension. For example, a tensor of size `[3, 256, 256]` indicates it has 3 channels, each with 256x256 elements.
+- **Shape**: This term also refers to the dimensions of the tensor. When you access a tensor's `shape` attribute, it provides the same information as `size()`, detailing the number of elements in each dimension of the tensor.
+
+In summary, in practice, **size** and **shape** are synonyms when referring to the dimensions of a tensor. They both provide information about how many elements exist in each dimension of the tensor.
+
+#### Example:
+- For a tensor with dimensions `[3, 256, 256]`:
+  - `tensor.size()` would return `(3, 256, 256)`
+  - `tensor.shape` would return `(3, 256, 256)`
+
+#!csharp
+
+image_tensor.size()
+
+#!csharp
+
+image_tensor.shape
+
+#!markdown
+
+#### dtype
+
+In tensor libraries like PyTorch and TorchSharp, `dtype` refers to the data type of the elements contained within the tensor. The data type determines how the data is stored and the precision of the numbers in the tensor.
+
+#### Common `dtype` Values:
+- **`torch.float32` (or `float`)**: 32-bit floating point. This is the default data type for most tensors and provides a good balance between precision and performance.
+- **`torch.float64` (or `double`)**: 64-bit floating point. Offers higher precision but at the cost of increased memory usage and computational resources.
+- **`torch.float16` (or `half`)**: 16-bit floating point. Used for reducing memory usage and speeding up computations, especially useful in mixed precision training on GPUs.
+- **`torch.int32` (or `int`)**: 32-bit integer. Commonly used for indexing and counting tasks.
+- **`torch.int64` (or `long`)**: 64-bit integer. Used when large integer values are needed, such as in large-scale data processing.
+- **`torch.uint8` (or `byte`)**: 8-bit unsigned integer. Often used for binary operations and image data.
+- **`torch.bool`**: Boolean type. Used for tensors that contain boolean values (True/False).
+
+#### Usage:
+- **Specifying `dtype`**: When creating a tensor, you can specify its `dtype` to ensure it uses the appropriate data type for your application. For example:
+
+#!csharp
+
+var tensor = torch.tensor(new float[] {1.0f, 2.0f, 3.0f}, dtype: torch.float32);
+
+#!csharp
+
+// Implicitly converts double array to float32, potentially losing precision for high-precision values.
+var tensor = torch.tensor(new double[] {1.123456789, 2.0, 3.0}, dtype: torch.float32);
+tensor.dtype
+
+#!markdown
+
+#### requires_grad
+
+In tensor libraries like PyTorch and TorchSharp, the `requires_grad` attribute of a tensor specifies whether or not gradients should be computed for that tensor during backpropagation. This is crucial for training neural networks, as gradients are used to update the model parameters.
+
+#### Key Points about `requires_grad`:
+- **Enabling Gradients**: When `requires_grad` is set to `True`, the library will track all operations on the tensor, allowing gradients to be computed during backpropagation.
+- **Disabling Gradients**: When `requires_grad` is set to `False`, the tensor is treated as a constant, and no gradients will be computed for it. This can save memory and computational resources.
+
+#### Usage:
+- **Setting `requires_grad`**: You can specify whether a tensor requires gradients when you create it, or you can modify this attribute on an existing tensor.
+
+#!csharp
+
+// Creating a tensor with requires_grad set to False
+var tensor = torch.tensor(new float[] {1.0f, 2.0f, 3.0f}, requires_grad: false);
+tensor.requires_grad
+
+#!csharp
+
+// Modifying requires_grad on an existing tensor
+tensor.requires_grad = true;
+tensor.requires_grad
+
+#!markdown
+
+##### Create Tensors with Gradients Enabled:
+
+#!csharp
+
+torch.Tensor x = torch.tensor(1.0, requires_grad: true);
+torch.Tensor y = torch.tensor(1.0, requires_grad: true);
+
+#!markdown
+
+Here, x and y are created with initial values 1.0 and 1.0, respectively, and requires_grad set to true. This means that these tensors will track all operations for automatic differentiation.
+
+**Perform a Calculation:**
+
+#!csharp
+
+torch.Tensor r = x * x + y;
+
+#!markdown
+
+The tensor r is calculated as the sum of x squared and y. This is the function for which we will compute the gradients with respect to x and y.
+
+**Compute Gradients:**
+
+#!csharp
+
+r.backward();
+
+#!markdown
+
+The backward() method computes the gradients of r with respect to x and y. This method populates the .grad attributes of the tensors x and y.
+
+**Print the Gradients:**
+
+#!csharp
+
+Console.WriteLine($"df/dx {x.grad.item<double>()}");
+Console.WriteLine($"df/dy {y.grad.item<double>()}");
+
+#!markdown
+
+This prints the gradients of f with respect to x and y.
+
+#!markdown
+
+##### Mathematical explenation
+
+#!markdown
+
+To understand how the gradient with respect to $x$ is calculated for the function $r = x^2 + y$, let's go through the step-by-step process of differentiating this function. The goal is to find $\frac{\partial r}{\partial x}$, which is the partial derivative of $r$ with respect to $x$.
+
+**Identify the Function:**
+
+- The function we are dealing with is:
+$$
+\Large
+r = x^2 + y
+$$
+
+
+**Understand Partial Derivatives:**
+
+- A partial derivative measures how a function changes as one of its variables changes, while keeping the other variables constant.
+- In this case, we want to see how $r$ changes as $x$ changes, keeping $y$ constant.
+
+**Differentiate the Function with Respect to $x$:**
+
+- The partial derivative of $r$ with respect to $x$ is denoted as $\frac{\partial r}{\partial x}$
+- The function $r$ consists of two terms: $x^2$ and $y$.
+
+**Apply the Power Rule to $x^2$:**
+
+- The power rule of differentiation states that the derivative of $x^n$ with respect to $x$ is
+$$
+\Large
+n \cdot x^{n-1}
+$$
+- Here, $n = 2$. So, the derivative of $x^2$ with respect to $x$ is:
+$$
+\frac{d}{dx}(x^2) = 2x
+$$
+
+**Differentiate the Constant Term $y$:**
+
+- When differentiating with respect to $x$, $y$ is treated as a constant.
+- The derivative of a constant is zero:
+$$
+\Large
+\frac{d}{dx}(y) = 0
+$$
+
+**Combine the Results:**
+
+- Combine the derivatives of the individual terms to get the partial derivative of $r$ with respect to $x$:
+$$
+\Large
+\frac{\partial r}{\partial x} = 2x + 0 = 2x
+$$
+
+**Summary**
+
+The partial derivative $\frac{\partial r}{\partial x} = 2x$ indicates how the function $r$ changes with respect to changes in $x$, while keeping $y$ constant. The steps involved:
+
+1. Identify the function: $r = x^2 + y$.
+2. Apply the power rule to $x^2$, resulting in $2x$.
+3. Recognize that the derivative of a constant (with respect to $x $) is zero.
+4. Combine the results to get 
+$$
+\Large
+\frac{\partial r}{\partial x} = 2x
+$$
+
+**Example in Context**
+
+If $x = 3$, then the gradient of $r$ with respect to $x$ would be:
+$$
+\Large
+\frac{\partial r}{\partial x} = 2 \times 3 = 6
+$$
+
+This means that, at $x = 3$, the function $r$ increases by 6 units for every unit increase in $x$.
+
+#!markdown
+
+<style>
+  .container {
+    text-align: center;
+  }
+
+  .main-image {
+    width: 30%;
+    height: auto;
+  }
+
+  .row {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+  }
+
+  .row img {
+    margin: 0 10px;
+    width: 20%;
+    height: auto;
+  }
+</style>
+
+<div class="container">
+  <img src="../assets/gradient.png" alt="Main Image" class="main-image">
+</div>
