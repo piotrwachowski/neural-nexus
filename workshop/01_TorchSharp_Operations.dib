@@ -672,6 +672,111 @@ minValue // Outputs: 1.0
 
 tensor.argmin()
 
+#!csharp
+
+// 2-D tensor
+var tensor = torch.tensor(new float[,] {
+    {1.0f, 2.0f},
+    {3.0f, -4.0f}
+});
+
+Console.WriteLine($"Minimum value: {tensor.min().item<float>()}");
+Console.WriteLine($"Index of minimum value: {tensor.argmin().item<Int64>()}");
+
+#!markdown
+
+In TorchSharp (and PyTorch), the argmin function returns the index of the minimum value in the flattened version of the tensor. This means it does not provide the multi-dimensional index but rather the index as if the tensor were reshaped into a 1D array.
+
+In our example, the flattened tensor looks like this: `[1.0, 2.0, 3.0, -4.0]`.
+
+To find the original multi-dimensional indices, you need to convert the flat index back to the original dimensions. For a tensor with shape $(2,2)$, you can use the following formula:
+
+#!markdown
+
+**Finding multi-dimensional index in 2D tensor**
+
+#!csharp
+
+var flatIndex = tensor.argmin().item<Int64>();
+
+// Convert flat index to multi-dimensional index
+var numRows = tensor.shape[0];
+var numCols = tensor.shape[1];
+
+var rowIndex = flatIndex / numCols;
+var colIndex = flatIndex % numCols;
+
+Console.WriteLine($"Multi-dimensional index of minimum value: ({rowIndex}, {colIndex})");
+
+#!markdown
+
+**Finding multi-dimensional index in n-dimentional tensor**
+
+#!csharp
+
+// 3-D tensor
+var tensor3D = torch.tensor(new float[,,] {
+    {
+        {1.0f, 2.0f, 3.0f},
+        {4.0f, 5.0f, 6.0f}
+    },
+    {
+        {7.0f, 8.0f, 9.0f},
+        {-10.0f, 11.0f, 12.0f}
+    }
+});
+
+#!csharp
+
+// 4-D tensor
+var tensor4D = torch.tensor(new float[,,,] {
+    {
+        {
+            {1.0f, 2.0f},
+            {3.0f, 4.0f}
+        },
+        {
+            {5.0f, 6.0f},
+            {7.0f, 8.0f}
+        }
+    },
+    {
+        {
+            {9.0f, 10.0f},
+            {11.0f, 12.0f}
+        },
+        {
+            {13.0f, 14.0f},
+            {-15.0f, 16.0f}
+        }
+    }
+});
+
+#!csharp
+
+var tensor = tensor3D;
+// var tensor = tensor4D;
+
+#!csharp
+
+var minValue = tensor.min().item<float>();
+var flatIndex = tensor.argmin().item<long>();
+
+Console.WriteLine($"Minimum value: {minValue}");
+Console.WriteLine($"Index of minimum value (flat): {flatIndex}");
+
+// Convert flat index to multi-dimensional index
+var shape = tensor.shape;
+long[] indices = new long[shape.Length];
+        
+for (int i = shape.Length - 1; i >= 0; i--)
+{
+    indices[i] = flatIndex % shape[i];
+    flatIndex /= shape[i];
+}
+
+Console.WriteLine($"Multi-dimensional index of minimum value: ({string.Join(", ", indices)})");
+
 #!markdown
 
 #### Max
