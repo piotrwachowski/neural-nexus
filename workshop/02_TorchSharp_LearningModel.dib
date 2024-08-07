@@ -381,6 +381,10 @@ In summary, the training process is all about discovering the best `weight` and 
 
 Starting with random numbers for the parameters ensures that the model explores various possibilities during training, preventing it from being biased by any initial assumptions.
 
+#!markdown
+
+##### LienarRegressionModel
+
 #!csharp
 
 // A linear regression model using manually defined weight and bias parameters.
@@ -405,6 +409,10 @@ public class LienarRegressionModel : torch.nn.Module<torch.Tensor, torch.Tensor>
     }
 }
 
+#!markdown
+
+##### LienarRegressionModelV2
+
 #!csharp
 
 // A linear regression model using a predefined linear layer from TorchSharp.
@@ -426,6 +434,88 @@ public class LienarRegressionModelV2 : torch.nn.Module<torch.Tensor, torch.Tenso
 
 #!markdown
 
+##### NeuralNetworkModel
+
+#!csharp
+
+using System;
+using TorchSharp;
+using static TorchSharp.torch;
+using static TorchSharp.torch.nn;
+
+public class NeuralNetworkModel : torch.nn.Module<torch.Tensor, torch.Tensor>
+{
+    private readonly Linear linearLayer1;
+    private readonly Linear linearLayer2;
+    private readonly Dropout dropout;
+    private readonly ReLU relu;
+
+    public NeuralNetworkModel() : base("NeuralNetworkModel")
+    {
+        // Define two linear layers
+        linearLayer1 = Linear(1, 20);
+        linearLayer2 = Linear(20, 1);
+        
+        // Define a dropout layer with 50% dropout rate
+        dropout = Dropout(0.5);
+
+        // Define a ReLU activation function
+        relu = ReLU();
+
+        RegisterComponents();
+    }
+
+    public override torch.Tensor forward(torch.Tensor x)
+    {
+        // Apply the first linear layer
+        var output = linearLayer1.forward(x);
+        
+        // Apply the ReLU activation function
+        output = relu.forward(output);
+        
+        // Apply the dropout layer
+        output = dropout.forward(output);
+        
+        // Apply the second linear layer
+        output = linearLayer2.forward(output);
+
+        return output;
+    }
+}
+
+#!markdown
+
+**What is Overfitting?**
+
+Overfitting occurs when a machine learning model learns the training data too well, including its noise and details, to the extent that it negatively impacts the model's performance on new, unseen data. Essentially, the model becomes too specialized to the training data and loses its ability to generalize to other data.
+
+#!markdown
+
+**Linear Layers**
+
+- **Role**: Linear layers (or fully connected layers) are fundamental building blocks of neural networks. They perform linear transformations on the input data by applying weights and biases.
+- **Hidden Layer**: When we refer to hidden layers in neural networks, we are often talking about these linear layers. They are called "hidden" because they are not visible to the outside world; they exist between the input and output layers of the network.
+
+**Activation Functions (ReLU)**
+
+- **Role**: Activation functions like ReLU (Rectified Linear Unit) introduce non-linearity into the network. This is crucial because it allows the network to learn and model complex patterns.
+- **Hidden Layer**: Activation functions are applied to the output of linear layers. They are an integral part of the hidden layers because they transform the linear outputs, enabling the network to capture intricate relationships in the data.
+
+**Dropout Layers**
+
+- **Role**: Dropout is a regularization technique used to prevent overfitting. During training, dropout randomly sets a fraction of the input units to zero, which forces the network to learn more robust features.
+- **Hidden Layer**: Dropout layers are applied to the outputs of other layers (usually linear layers). While they don't perform transformations like linear or activation layers, they modify the data flow during training and can be considered part of the hidden layers.
+
+#!markdown
+
+Link: https://pytorch.org/docs/stable/nn.html
+
+#!markdown
+
+##### Learnig process
+
+#!markdown
+
 **Loss Function**
 
 A loss function is a mathematical function that measures the difference between the predicted values produced by a model and the actual values in the data. It quantifies how well or poorly a model's predictions match the true outcomes. The goal of training a machine learning model is to minimize this loss, thereby improving the accuracy of the model's predictions.
@@ -444,11 +534,7 @@ A gradient is a vector that represents the direction and rate of the fastest inc
 
 In summary, the gradient helps in understanding how to adjust model parameters to minimize the loss function, thereby improving the model's performance.
 
-#!markdown
-
-**Learnig process**
-
-**1. Gradient Descent:**
+**Gradient Descent:**
 
 - Gradient Descent is an optimization algorithm used to minimize the loss function. In the context of linear regression, the loss function is often Mean Squared Error (MSE).
 - The algorithm iteratively adjusts the parameters (weights and bias) to find the values that minimize the loss function.
@@ -457,7 +543,7 @@ In summary, the gradient helps in understanding how to adjust model parameters t
 
 Link: https://www.youtube.com/watch?v=IHZwWFHWa-w
 
-**2. Backpropagation:**
+**Backpropagation:**
 
 - Backpropagation is an algorithm used to calculate the gradient of the loss function with respect to each parameter in the model. It is particularly essential in deep learning for updating weights in multi-layer networks, but its principles apply to simpler models as well.
 - It works by propagating the error from the output layer back through the model, layer by layer, calculating the gradient at each step.
@@ -465,7 +551,7 @@ Link: https://www.youtube.com/watch?v=IHZwWFHWa-w
 
 Link: https://www.youtube.com/watch?v=Ilg3gGewQ5U
 
-**3. Combined Process**
+**Combined Process**
 
 - **Forward Pass**: In the forward pass, the model computes the predicted output using the current parameters.
 - **Loss Calculation**: The loss function calculates the difference between the predicted output and the actual output.
@@ -568,6 +654,45 @@ using(torch.no_grad()) // inference mode
 
 #!markdown
 
+#### A Neural Network with Activation and Dropout
+
+#!csharp
+
+// instantiate the model
+
+var RandomSeed = 42;
+torch.manual_seed(RandomSeed);
+
+var ModelNN = new NeuralNetworkModel().to(device);
+
+#!csharp
+
+// list the model parameters
+
+ModelNN.parameters().ToList().ForEach(p => {
+        Console.WriteLine($"Value: {p.data<float>()[0]} | Requires grad: {p.requires_grad} | {p}");
+    }
+);
+
+#!csharp
+
+// list the model state dictionary (named parameters)
+
+ModelNN.state_dict().ToList().ForEach(p => {
+        Console.WriteLine($"Key: {p.Key} | Value: {p.Value.data<float>()[0]} | Requires grad: {p.Value.requires_grad} | {p.Value}");
+    }
+);
+
+#!csharp
+
+using(torch.no_grad()) // inference mode
+{
+    var prediction = ModelNN.forward(XTestData);
+    VisualizeData("Prediction", XTrainData, YTrainData, XTestData, YTestData, prediction);
+}
+
+#!markdown
+
 #### Training Model
 
 #!markdown
@@ -621,7 +746,9 @@ An optimizer is an algorithm or method used in machine learning to adjust the pa
 var RandomSeed = 42;
 torch.manual_seed(RandomSeed);
 
-var Model0 = new LienarRegressionModel().to(device);
+// var Model0 = new LienarRegressionModel().to(device);
+// var Model0 = new LienarRegressionModelV2().to(device);
+var Model0 = new NeuralNetworkModel().to(device);
 
 Model0.state_dict().ToList().ForEach(p => {
         Console.WriteLine($"Key: {p.Key} | Value: {p.Value.data<float>()[0]} | Requires grad: {p.Value.requires_grad} | {p.Value}");
@@ -678,7 +805,7 @@ The backward pass, also known as backpropagation, is a critical step in training
 
 #!csharp
 
-var Epochs = 3000;
+var Epochs = 300000;
 
 #!csharp
 
@@ -851,7 +978,7 @@ In machine learning, saving and loading models is crucial for preserving the tra
 #!csharp
 
 var parentFolder = Directory.GetParent(Directory.GetCurrentDirectory());
-var modelPath = Path.Combine(parentFolder.FullName, "models", $"LinearRegressionModel.pt");
+var modelPath = Path.Combine(parentFolder.FullName, "models", $"NeuralNetworkModel.pt");
 
 // Model0.save(modelPath);
 
@@ -862,9 +989,9 @@ var modelPath = Path.Combine(parentFolder.FullName, "models", $"LinearRegression
 #!csharp
 
 var parentFolder = Directory.GetParent(Directory.GetCurrentDirectory());
-var modelPath = Path.Combine(parentFolder.FullName, "models", $"LinearRegressionModel.pt");
+var modelPath = Path.Combine(parentFolder.FullName, "models", $"NeuralNetworkModel.pt");
 
-var LoadedModel = new LienarRegressionModel();
+var LoadedModel = new NeuralNetworkModel();
 LoadedModel.load(modelPath);
 
 using(torch.no_grad()) // inference mode
