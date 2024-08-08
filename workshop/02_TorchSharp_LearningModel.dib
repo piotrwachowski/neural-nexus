@@ -251,6 +251,7 @@ var trainTestSplit = 0.8;
 
 var XDataCount = X.shape[0];
 var YDataCount = y.shape[0];
+Console.WriteLine($"XDataCount: {XDataCount}, YDataCount: {YDataCount}");
 
 #!csharp
 
@@ -290,13 +291,13 @@ Console.WriteLine($"Test dataX count: {XTestDataCount} of {X.shape[0]}");
 
 // split X data and get the test data
 var XTestData = X.narrow(0, XTrainDataCount, XTestDataCount);
-Console.WriteLine($"Test dataX count: {XTestData.shape[0]}");
+Console.WriteLine($"Test XTestData count: {XTestData.shape[0]}");
 
 #!csharp
 
 // test data Y count
 var YTestDataCount = YDataCount - YTrainDataCount;
-Console.WriteLine($"Test dataY count: {YTestDataCount} of {y.shape[0]}");
+Console.WriteLine($"Test YTestDataCount count: {YTestDataCount} of {y.shape[0]}");
 
 #!csharp
 
@@ -329,41 +330,44 @@ VisualizeData("Train and Test data", XTrainData, YTrainData, XTestData, YTestDat
 
 #!markdown
 
-A linear regression model is a statistical method used to understand the relationship between two continuous variables. The model predicts the value of a dependent variable (\(y\)) based on the value of an independent variable (\(x\)). The relationship is modeled using a linear equation:
+A linear regression model is a statistical method used to understand the relationship between two continuous variables. The model predicts the value of a dependent variable $(y)$ based on the value of an independent variable $(x)$. The relationship is modeled using a linear equation:
 
-**\[ y = mx + b \]**
+$$
+\Large
+y = mx + b
+$$
 
 **Components of the Linear Regression Equation**
 
-1. **Dependent Variable (\(y\))**:
+1. **Dependent Variable $(y)$**:
    - The outcome or the variable you are trying to predict.
 
-2. **Independent Variable (\(x\))**:
+2. **Independent Variable $(x)$**:
    - The predictor or the variable used to predict the dependent variable.
 
-3. **Slope (\(m\))**:
+3. **Slope $(m)$**:
    - Represents the change in the dependent variable for a one-unit change in the independent variable.
    - It indicates the strength and direction of the relationship between \(x\) and \(y\).
 
-4. **Intercept (\(b\))**:
+4. **Intercept $(b)$**:
    - The value of \(y\) when \(x = 0\).
    - It represents the starting point of the line on the y-axis.
 
 **How the Model Works**
 
-The linear regression model essentially runs the formula \(y = mx + b\) to make predictions. Here’s how it works:
+The linear regression model essentially runs the formula $y = mx + b$ to make predictions. Here’s how it works:
 
 1. **Fitting the Model**:
-   - During the training phase, the model uses a dataset with known \(x\) and \(y\) values to find the best values for \(m\) (slope) and \(b\) (intercept) that minimize the error between the predicted \(y\) values and the actual \(y\) values.
+   - During the training phase, the model uses a dataset with known $(x)$ and $(y)$ values to find the best values for $(m)$ (slope) and $(b)$ (intercept) that minimize the error between the predicted $(y)$ values and the actual $(y)$ values.
    - This process involves calculating the least squares, which minimizes the sum of the squared differences between the observed and predicted values.
 
 2. **Making Predictions**:
-   - Once the model is trained, you can use the learned values of \(m\) and \(b\) to make predictions on new data.
-   - For any new value of \(x\), you can compute the predicted \(y\) using the equation \(y = mx + b\).
+   - Once the model is trained, you can use the learned values of $(m)$ and $(b)$ to make predictions on new data.
+   - For any new value of $(x)$, you can compute the predicted $(y)$ using the equation $(y = mx + b)$.
 
 **Example Application**
 
-You have data on the number of hours studied (independent variable, \(x\)) and the corresponding test scores (dependent variable, \(y\)). By applying linear regression, you can determine how changes in study hours affect test scores. Once trained, your model can predict the test score for any given number of study hours.
+You have data on the number of hours studied (independent variable, $(x)$ and the corresponding test scores (dependent variable, $(y)$. By applying linear regression, you can determine how changes in study hours affect test scores. Once trained, your model can predict the test score for any given number of study hours.
 
 #!markdown
 
@@ -371,7 +375,7 @@ You have data on the number of hours studied (independent variable, \(x\)) and t
 
 #!markdown
 
-In the given class `LinearRegressionModel`, we have two parameters, `weight` and `bias`, which were initially known to us (during data preparation). However, in the context of machine learning, the goal of training the model is to learn these parameters, which are now unknown. The purpose of learning is to use the provided training data to estimate these parameters accurately, so the model can make predictions as close as possible to the values used to create the data.
+In the given class `LinearRegressionModel`, we have two parameters, `weight` and `bias`, which were initially known to us (during data preparation). However, in the context of machine learning, the goal of training the model is to learn these parameters, which are now unknown. The purpose of learning is to use the provide training data to estimate these parameters accurately, so the model can make predictions as close as possible to the values used to create the data.
 
 During training, the model uses the known input data (features) and the corresponding output data (labels) to adjust the `weight` and `bias` through optimization techniques such as gradient descent. The training process iteratively updates these parameters to minimize the difference between the predicted output and the actual output.
 
@@ -697,6 +701,10 @@ using(torch.no_grad()) // inference mode
 
 #!markdown
 
+Link: https://pytorch.org/docs/stable/nn.html
+
+#!markdown
+
 ##### Loss Function
 
 #!markdown
@@ -732,6 +740,8 @@ where \( y<sub>i</sub> \) are the actual values and \( &#375;<sub>i</sub> \) are
 
 #!markdown
 
+Link: https://pytorch.org/docs/stable/optim.html
+
 An optimizer is an algorithm or method used in machine learning to adjust the parameters (weights and biases) of a model to minimize the loss function. The optimizer helps improve the model's accuracy by finding the best set of parameters that reduce the error between the predicted values and the actual values.
 
 - **Purpose**: To adjust the model's parameters to minimize the loss function, thereby improving the model's predictions.
@@ -746,9 +756,9 @@ An optimizer is an algorithm or method used in machine learning to adjust the pa
 var RandomSeed = 42;
 torch.manual_seed(RandomSeed);
 
-// var Model0 = new LienarRegressionModel().to(device);
+var Model0 = new LienarRegressionModel().to(device);
 // var Model0 = new LienarRegressionModelV2().to(device);
-var Model0 = new NeuralNetworkModel().to(device);
+// var Model0 = new NeuralNetworkModel().to(device);
 
 Model0.state_dict().ToList().ForEach(p => {
         Console.WriteLine($"Key: {p.Key} | Value: {p.Value.data<float>()[0]} | Requires grad: {p.Value.requires_grad} | {p.Value}");
@@ -805,7 +815,7 @@ The backward pass, also known as backpropagation, is a critical step in training
 
 #!csharp
 
-var Epochs = 300000;
+var Epochs = 4000;
 
 #!csharp
 
@@ -855,7 +865,7 @@ for (int epoch = 0; epoch < Epochs; ++epoch)
         }
     );
 
-    using(torch.no_grad()) // no inference mode
+    using(torch.no_grad()) // inference mode
     {
         // 7. set the model to evaluation mode
         Model0.eval();
@@ -978,7 +988,7 @@ In machine learning, saving and loading models is crucial for preserving the tra
 #!csharp
 
 var parentFolder = Directory.GetParent(Directory.GetCurrentDirectory());
-var modelPath = Path.Combine(parentFolder.FullName, "models", $"NeuralNetworkModel.pt");
+var modelPath = Path.Combine(parentFolder.FullName, "models", $"LienarRegressionModel.pt");
 
 // Model0.save(modelPath);
 
@@ -989,9 +999,9 @@ var modelPath = Path.Combine(parentFolder.FullName, "models", $"NeuralNetworkMod
 #!csharp
 
 var parentFolder = Directory.GetParent(Directory.GetCurrentDirectory());
-var modelPath = Path.Combine(parentFolder.FullName, "models", $"NeuralNetworkModel.pt");
+var modelPath = Path.Combine(parentFolder.FullName, "models", $"LienarRegressionModel.pt");
 
-var LoadedModel = new NeuralNetworkModel();
+var LoadedModel = new LienarRegressionModel();
 LoadedModel.load(modelPath);
 
 using(torch.no_grad()) // inference mode
