@@ -1,0 +1,338 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+
+#!csharp
+
+#i "nuget: https://api.nuget.org/v3/index.json"
+#r "nuget: TorchSharp-cpu, 0.102.6"
+#r "nuget: libtorch-cpu-win-x64, 2.2.1.1"
+#r "nuget: ScottPlot, 4.1.36"
+#r "nuget: System.Drawing.Common"
+
+#!csharp
+
+using TorchSharp;
+using TorchSharp.Modules;
+using static TorchSharp.torch.nn;
+using static TorchSharp.TensorExtensionMethods;
+using System;
+using ScottPlot;
+using System.Drawing;
+using System.IO;
+
+#!csharp
+
+Console.WriteLine($"TorchSharp version: {torch.__version__}");
+Console.WriteLine($"CLR version: {System.Environment.Version}");
+Console.WriteLine($"CUDA available: {torch.cuda.is_available()}");
+Console.WriteLine($"GPU count: {torch.cuda.device_count()}");
+
+// Set the default tensor string style to C#.
+torch.TensorStringStyle = torch.csharp;
+
+// Set the device to CUDA if available, otherwise CPU.
+static var device = torch.cuda.is_available() ? torch.CUDA : torch.CPU;
+
+Console.WriteLine($"Device: {device}, Style: {torch.TensorStringStyle}");
+
+#!markdown
+
+# TorchSharp Regression Exercises
+
+#!markdown
+
+## 1. **Create a linear dataset using the formula for linear regression:** (weight * X + bias).
+   - Set `weight` to `0.3` and `bias` to `0.9`. Ensure there are at least 100 data points in total.
+   - Split the dataset into 80% for training and 20% for testing.
+   - Plot the training and testing data to visualize the dataset.
+
+**Your output should look something like this:**
+
+- **Number of X samples:** 100
+- **Number of y samples:** 100
+
+**First 10 X & y samples:**
+
+- **X:** `tensor([0.0000, 0.0100, 0.0200, 0.0300, 0.0400, 0.0500, 0.0600, 0.0700, 0.0800, 0.0900])`
+- **y:** `tensor([0.9000, 0.9030, 0.9060, 0.9090, 0.9120, 0.9150, 0.9180, 0.9210, 0.9240, 0.9270])`
+
+#!csharp
+
+// Create the data parameters
+float weight = 0.3f;
+float bias = 0.9f;
+
+// Make X and y using linear regression feature
+var X = torch.arange(0, 0.99, 0.01f).unsqueeze(1);
+var y = weight * X + bias;
+
+// Print the number of samples in X and y
+Console.WriteLine($"Number of X samples: {X.shape[0]}");
+Console.WriteLine($"Number of y samples: {y.shape[0]}");
+
+// Print the first 10 samples of X and y
+Console.WriteLine($"X: {X.slice(0, 0, 10, 1).ToString(TensorStringStyle.Numpy)}");
+Console.WriteLine($"y: {y.slice(0, 0, 10, 1).ToString(TensorStringStyle.Numpy)}");
+
+#!csharp
+
+// Split the data into training and testing
+int train_split = (int)(X.shape[0] * 0.8);
+var X_train = X.slice(0, 0, train_split, 1);
+var y_train = y.slice(0, 0, train_split, 1);
+var X_test = X.slice(0, train_split, X.shape[0], 1);
+var y_test = y.slice(0, train_split, y.shape[0], 1);
+
+// Print the number of samples in training and testing sets
+Console.WriteLine($"Number of X_train samples: {X_train.shape[0]}");
+Console.WriteLine($"Number of y_train samples: {y_train.shape[0]}");
+Console.WriteLine($"Number of X_test samples: {X_test.shape[0]}");
+Console.WriteLine($"Number of y_test samples: {y_test.shape[0]}");
+
+#!csharp
+
+void DisplayBitmap(System.Drawing.Bitmap bitmap)
+{
+    // Convert the Bitmap to a base64 string
+    string base64String;
+    using (MemoryStream ms = new MemoryStream())
+    {
+        bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+        byte[] imgBytes = ms.ToArray();
+        base64String = Convert.ToBase64String(imgBytes);
+    }
+
+    // Display the image using HTML
+    string html = $"<img src='data:image/png;base64,{base64String}' />";
+    Microsoft.DotNet.Interactive.Formatting.Formatter.Register<string>((content, writer) =>
+    {
+        writer.Write(content);
+    }, "text/html");
+
+    html.DisplayAs("text/html");
+}
+
+#!csharp
+
+void VisualizeData(string Title, torch.Tensor XTrain, torch.Tensor YTrain, torch.Tensor XTest, torch.Tensor YTest, torch.Tensor YPred)
+{
+    double[] dataX = XTrain.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+    double[] dataY = YTrain.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+
+    var plt = new ScottPlot.Plot(600, 400);
+
+    plt.AddScatter(dataX, dataY, markerSize: 5, color: Color.Blue, label: "Train Data");
+
+
+    if (XTest is not null && YTest is not null)
+    {
+        double[] dataXTest = XTest.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+        double[] dataYTest = YTest.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+
+        var TestScatter = plt.AddScatter(dataXTest, dataYTest, markerSize: 5, color: Color.Green, label: "Test Data");
+    }
+
+    if (YPred is not null && XTest is not null)
+    {
+        double[] dataYPred = YPred.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+        double[] dataXTest = XTest.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+        var PredScatter = plt.AddScatter(dataXTest, dataYPred, markerSize: 5, color: Color.Red, label: "Pred Data");
+    }
+
+    plt.Title(Title);
+    plt.XLabel("X Axis");
+    plt.YLabel("Y Axis");
+    plt.Grid(true);
+    plt.Legend();
+
+    DisplayBitmap(plt.GetBitmap());
+}
+
+#!csharp
+
+// Plot the training and testing data 
+VisualizeData("Training and Testing Data", X_train, y_train, X_test, y_test, null);
+
+#!markdown
+
+## 2. **Build a PyTorch model by subclassing `nn.Module<torch.Tensor, torch.Tensor>`.**
+
+- Inside, there should be a randomly initialized `nn.Parameter()` with `requires_grad=True`, one for weights and one for bias.
+- Implement the `forward()` method to compute the linear regression function you used to create the dataset in step 1.
+- Once you've constructed the model, create an instance of it and check its `state_dict()`.
+
+**Note:** If you'd like to use `nn.Linear()` instead of `nn.Parameter()`, you can.
+
+#!csharp
+
+// Create PyTorch linear regression model by subclassing nn.Module
+class LinearRegressionModel : Module<torch.Tensor, torch.Tensor>
+{
+    private Linear linear_layer;
+
+    public LinearRegressionModel() : base("LinearRegressionModel")
+    {
+        linear_layer = Linear(1, 1);
+        RegisterComponents();
+    }
+
+    public override torch.Tensor forward(torch.Tensor x)
+    {
+        return linear_layer.forward(x);
+    }
+}
+
+#!csharp
+
+// # Instantiate the model and put it to the target device
+torch.manual_seed(42);
+var model_1 = new LinearRegressionModel().to(device);
+
+#!csharp
+
+// Print model parameters
+model_1.state_dict().ToList().ForEach(p => {
+        Console.WriteLine($"Key: {p.Key} | Value: {p.Value.data<float>()[0]} | Requires grad: {p.Value.requires_grad} | {p.Value}");
+    }
+);
+
+#!markdown
+
+## 3. **Create a loss function and optimizer using `nn.L1Loss()` and `torch.optim.SGD(params, lr)` respectively.**
+
+- Set the learning rate of the optimizer to `0.01`, and the parameters to optimize should be the model parameters from the model you created in step 2.
+- Write a training loop to perform the appropriate training steps for 300 epochs.
+- The training loop should test the model on the test dataset every 20 epochs.
+
+#!csharp
+
+// Create the loss function and optimizer
+var loss_fn = L1Loss();
+var optimizer = torch.optim.SGD(model_1.parameters(), 0.01);
+
+#!csharp
+
+// Training loop
+
+// Set manual seed for reproducibility
+torch.manual_seed(42);
+
+// Train model for 300 epochs
+int epochs = 300;
+
+// Send data to target device
+X_train = X_train.to(device);
+X_test = X_test.to(device);
+y_train = y_train.to(device);
+y_test = y_test.to(device);
+
+for (int epoch = 0; epoch < epochs; epoch++)
+{
+    // Put model in train mode
+    model_1.train();
+
+    // 1. Forward pass
+    var y_pred = model_1.forward(X_train);
+
+    // 2. Calculate loss
+    var loss = loss_fn.forward(y_pred, y_train);
+
+    // 3. Zero gradients
+    optimizer.zero_grad();
+
+    // 4. Backpropagation
+    loss.backward();
+
+    // 5. Step the optimizer
+    optimizer.step();
+
+    // Perform testing every 20 epochs
+    if (epoch % 20 == 0)
+    {
+        // Put model in evaluation mode and setup inference context 
+        model_1.eval();
+        using (var noGrad = torch.no_grad())
+        {
+            // 1. Forward pass
+            var y_preds = model_1.forward(X_test);
+
+            // 2. Calculate test loss
+            var test_loss = loss_fn.call(y_preds, y_test);
+
+            // Print out what's happening
+            Console.WriteLine($"Epoch: {epoch} | Train loss: {loss.item<float>():F3} | Test loss: {test_loss.item<float>():F3}");
+        }
+    }
+}
+
+#!markdown
+
+## 4. **Make predictions with the trained model on the test data.**
+
+- Visualize these predictions against the original training and testing data.
+
+#!csharp
+
+// Make predictions with the model
+
+// Put model in evaluation mode
+model_1.eval();
+torch.Tensor y_test_preds = null;
+
+// Disable gradient calculation
+using (var noGrad = torch.no_grad())
+{
+    // Make predictions with the model
+    y_test_preds = model_1.forward(X_test);
+
+    // Print the predictions
+    Console.WriteLine($"Predictions: {y_test_preds.ToString(TensorStringStyle.Numpy)}");
+
+}
+
+#!csharp
+
+// Plot the predictions
+VisualizeData("Predictions", X_train, y_train, X_test, y_test, y_test_preds);
+
+#!markdown
+
+## 5. **Save your trained model to a file.**
+
+- Create a new instance of the model class you made in step 2 and load the model data you just saved into it.
+- Perform predictions on your test data with the loaded model and confirm they match the original model predictions from step 4.
+
+#!csharp
+
+// Create path to save the model
+var parentFolder = Directory.GetParent(Directory.GetCurrentDirectory());
+var modelFolder = Path.Combine(parentFolder.FullName, "models");
+var modelPath = Path.Combine(modelFolder, "LinearRegressionModel.pt");
+
+// Ensure the directory exists
+if (!Directory.Exists(modelFolder))
+{
+    Directory.CreateDirectory(modelFolder);
+}
+
+#!csharp
+
+// Save the model to file
+model_1.save(modelPath);
+
+#!csharp
+
+// Create new instance of model and load saved model data
+var LoadedModel = new LinearRegressionModel();
+LoadedModel.load(modelPath);
+
+#!csharp
+
+// Make predictions with loaded model and compare them to the previous
+using(torch.no_grad()) // inference mode
+{
+    LoadedModel.eval();
+    var prediction = LoadedModel.forward(X_test);
+    VisualizeData("Predictions", X_train, y_train, X_test, y_test, prediction);
+}

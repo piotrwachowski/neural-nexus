@@ -1,0 +1,611 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+
+#!markdown
+
+# Environment Setup
+
+#!csharp
+
+#r "nuget: TorchSharp-cpu, 0.102.6"
+#r "nuget: libtorch-cpu-win-x64, 2.2.1.1"
+#r "nuget: Accord, 3.8.0"
+#r "nuget: Accord.MachineLearning, 3.8.0"
+#r "nuget: Accord.Math, 3.8.0"
+#r "nuget: ScottPlot, 4.1.27"
+#r "nuget: Microsoft.Data.Analysis"
+
+#!csharp
+
+using TorchSharp;
+using TorchSharp.Modules;
+using static TorchSharp.torch;
+using static TorchSharp.torch.nn;
+using static TorchSharp.TensorExtensionMethods;
+
+#!csharp
+
+using System;
+using System.Linq;
+using Accord.Math;
+using Accord.Statistics.Distributions.Multivariate;
+using ScottPlot;
+using Microsoft.Data.Analysis;
+
+#!csharp
+
+Console.WriteLine($"TorchSharp version: {torch.__version__}");
+Console.WriteLine($"CLR version: {System.Environment.Version}");
+Console.WriteLine($"CUDA available: {torch.cuda.is_available()}");
+Console.WriteLine($"GPU count: {torch.cuda.device_count()}");
+
+// Set the default tensor string style to C#.
+torch.TensorStringStyle = torch.csharp;
+
+// Set the device to CUDA if available, otherwise CPU.
+static var device = torch.cuda.is_available() ? torch.CUDA : torch.CPU;
+
+Console.WriteLine($"Device: {device}, Style: {torch.TensorStringStyle}");
+
+#!markdown
+
+# Helper Functions
+
+#!markdown
+
+## Function: `DisplayBitmap`
+
+#!markdown
+
+### Signature:
+```csharp
+void DisplayBitmap(System.Drawing.Bitmap bitmap)
+```
+
+### Description:
+Displays the given bitmap image in a readable format.
+
+### Parameters:
+| Parameter | Type                | Description                     |
+|-----------|---------------------|---------------------------------|
+| `bitmap`  | `System.Drawing.Bitmap` | The bitmap image to be displayed |
+
+### Returns:
+This function does not return a value.
+
+#!csharp
+
+using System.IO;
+
+void DisplayBitmap(System.Drawing.Bitmap bitmap)
+{
+    // Convert the Bitmap to a base64 string
+    string base64String;
+    using (MemoryStream ms = new MemoryStream())
+    {
+        bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+        byte[] imgBytes = ms.ToArray();
+        base64String = Convert.ToBase64String(imgBytes);
+    }
+
+    // Display the image using HTML
+    string html = $"<img src='data:image/png;base64,{base64String}' />";
+    Microsoft.DotNet.Interactive.Formatting.Formatter.Register<string>((content, writer) =>
+    {
+        writer.Write(content);
+    }, "text/html");
+
+    html.DisplayAs("text/html");
+}
+
+#!markdown
+
+## Class: `Metrics`
+
+#!markdown
+
+#### Signature:
+```csharp
+public static double AccuracyFn(torch.Tensor y_true, torch.Tensor y_pred)
+```
+
+#### Description:
+Calculates the accuracy of a classification model by comparing the true labels (`y_true`) with the predicted labels (`y_pred`).
+
+#### Parameters:
+| Parameter  | Type        | Description                                                |
+|------------|-------------|------------------------------------------------------------|
+| `y_true`   | `torch.Tensor` | The true labels for the dataset.                           |
+| `y_pred`   | `torch.Tensor` | The predicted labels from the model.                       |
+
+#### Returns:
+| Return Value | Type   | Description                                                   |
+|--------------|--------|---------------------------------------------------------------|
+| `acc`        | `double`| The accuracy of the model as a percentage.                    |
+
+#!csharp
+
+public static class Metrics
+{
+    // Calculate accuracy (a classification metric)
+    public static double AccuracyFn(torch.Tensor y_true, torch.Tensor y_pred)
+    {
+        var correct = torch.eq(y_true, y_pred).sum().item<long>(); // torch.eq() calculates where two tensors are equal
+        var acc = (correct / (double)y_pred.shape[0]) * 100;
+        return acc;
+    }
+}
+
+#!markdown
+
+## Function: `CreateDataFrame`
+
+#!markdown
+
+### Signature:
+```csharp
+DataFrame CreateDataFrame(Tensor X, Tensor y)
+```
+
+### Description:
+Creates a DataFrame from the given tensors `X` and `y`.
+
+### Parameters:
+| Parameter | Type    | Description                     |
+|-----------|---------|---------------------------------|
+| `X`       | `Tensor`| Tensor containing feature data  |
+| `y`       | `Tensor`| Tensor containing label data    |
+
+### Returns:
+A `DataFrame` containing the features and labels.
+
+#!csharp
+
+DataFrame CreateDataFrame(Tensor X, Tensor y)
+{
+    var x1 = X.index_select(1, torch.tensor(0)).data<float>().ToArray();
+    var x2 = X.index_select(1, torch.tensor(1)).data<float>().ToArray();
+    var labels = y.to_type(torch.ScalarType.Int32).data<int>().ToArray();
+
+    var df = new DataFrame();
+    df.Columns.Add(new PrimitiveDataFrameColumn<float>("X1", x1));
+    df.Columns.Add(new PrimitiveDataFrameColumn<float>("X2", x2));
+    df.Columns.Add(new PrimitiveDataFrameColumn<int>("Label", labels));
+
+    return df;
+}
+
+#!markdown
+
+## Function: `DisplayDataFrame`
+
+#!markdown
+
+### Signature:
+```csharp
+void DisplayDataFrame(DataFrame df)
+```
+
+### Description:
+Displays the given DataFrame in a readable format.
+
+### Parameters:
+| Parameter | Type      | Description                     |
+|-----------|-----------|---------------------------------|
+| `df`      | `DataFrame` | The DataFrame to be displayed   |
+
+### Returns:
+This function does not return a value.
+
+#!csharp
+
+void DisplayDataFrame(DataFrame df, int rows = 10)
+{
+    // Calculate the maximum length of the values in each column
+    var maxColumnLength = df.Columns
+        .SelectMany(c => Enumerable.Range(0, (int)c.Length).Select(i => c[i].ToString().Length).Append(c.Name.Length))
+        .Max();
+
+    // Print the column names with padding
+    var columnNames = string.Join(" | ", df.Columns.Select(c => c.Name.PadRight(maxColumnLength)));
+    Console.WriteLine(columnNames);
+    Console.WriteLine(new string('-', columnNames.Length));
+
+    // Print the rows with padding
+    for (int i = 0; i < Math.Min(rows, df.Rows.Count); i++)
+    {
+        var row = df.Rows[i];
+        var rowValues = string.Join(" | ", row.Select((v, j) => v.ToString().PadRight(maxColumnLength)));
+        Console.WriteLine(rowValues);
+    }
+}
+
+#!markdown
+
+# Data preparation
+
+#!csharp
+
+// Set the hyperparameters for data creation
+int NUM_CLASSES = 4;
+int NUM_FEATURES = 2;
+int RANDOM_SEED = 42;
+int SAMPLES_PER_CLASS = 250; // 1000 samples total
+
+#!csharp
+
+// Create multi-class data with separated means
+var generator = new MultivariateNormalDistribution[NUM_CLASSES];
+Accord.Math.Random.Generator.Seed = RANDOM_SEED;
+for (int i = 0; i < NUM_CLASSES; i++)
+{
+    // Adjust the means to be farther apart
+    var mean = new double[NUM_FEATURES];
+    for (int j = 0; j < NUM_FEATURES; j++)
+    {
+        mean[j] = i * 10.0; // Adjust this value to control the separation
+    }
+    var covariance = Accord.Math.Matrix.Identity(NUM_FEATURES).ToJagged();
+    generator[i] = new MultivariateNormalDistribution(mean, covariance);
+}
+
+#!csharp
+
+// Generate blobs manually
+double[][] X_blob = new double[NUM_CLASSES * SAMPLES_PER_CLASS][];
+int[] y_blob = new int[NUM_CLASSES * SAMPLES_PER_CLASS];
+for (int i = 0; i < NUM_CLASSES; i++)
+{
+    var samples = generator[i].Generate(SAMPLES_PER_CLASS);
+    for (int j = 0; j < SAMPLES_PER_CLASS; j++)
+    {
+        X_blob[i * SAMPLES_PER_CLASS + j] = samples[j];
+        y_blob[i * SAMPLES_PER_CLASS + j] = i;
+    }
+}
+
+// Convert double[][] to float[]
+float[] X_blob_flat = new float[X_blob.Length * X_blob[0].Length];
+for (int i = 0; i < X_blob.Length; i++)
+{
+    for (int j = 0; j < X_blob[i].Length; j++)
+    {
+        X_blob_flat[i * X_blob[i].Length + j] = (float)X_blob[i][j];
+    }
+}
+
+#!csharp
+
+// Create tensors
+var X_blob_tensor = torch.tensor(X_blob_flat).reshape(X_blob.Length, X_blob[0].Length);
+var y_blob_tensor = torch.tensor(y_blob, torch.int64);
+
+// Shuffle the data
+var permutation = torch.randperm(X_blob_tensor.shape[0], torch.int64);
+X_blob_tensor = X_blob_tensor.index_select(0, permutation);
+y_blob_tensor = y_blob_tensor.index_select(0, permutation);
+
+// Slice and print tensors
+Console.WriteLine(X_blob_tensor[torch.TensorIndex.Slice(0, 5)]);
+Console.WriteLine(y_blob_tensor[torch.TensorIndex.Slice(0, 5)]);
+
+#!csharp
+
+// Split into train and test sets
+var random = new Random(RANDOM_SEED);
+var indices = Enumerable.Range(0, X_blob.Length).ToArray();
+indices = indices.OrderBy(x => random.Next()).ToArray();
+int trainSize = (int)(0.8 * X_blob.Length);
+var trainIndices = indices.Take(trainSize).ToArray();
+var testIndices = indices.Skip(trainSize).ToArray();
+
+var X_blob_train = X_blob_tensor.index_select(0, torch.tensor(trainIndices));
+var X_blob_test = X_blob_tensor.index_select(0, torch.tensor(testIndices));
+var y_blob_train = y_blob_tensor.index_select(0, torch.tensor(trainIndices));
+var y_blob_test = y_blob_tensor.index_select(0, torch.tensor(testIndices));
+
+#!csharp
+
+// Plot data
+var plt = new ScottPlot.Plot(600, 400);
+
+// Extract data from tensors
+var x_data_0 = X_blob_tensor[torch.TensorIndex.Colon, 0].data<float>().ToArray().Select(x => (double)x).ToArray();
+var x_data_1 = X_blob_tensor[torch.TensorIndex.Colon, 1].data<float>().ToArray().Select(x => (double)x).ToArray();
+var y_data = y_blob_tensor.data<long>().ToArray();
+
+// Define colors for each class
+var colors = new System.Drawing.Color[] { System.Drawing.Color.Red, System.Drawing.Color.Blue, System.Drawing.Color.Green, System.Drawing.Color.Purple };
+
+// Plot data
+for (int i = 0; i < NUM_CLASSES; i++)
+{
+    var classIndices = y_data.Select((value, index) => new { value, index })
+                             .Where(x => x.value == i)
+                             .Select(x => x.index)
+                             .ToArray();
+    var class_x_data_0 = classIndices.Select(index => x_data_0[index]).ToArray();
+    var class_x_data_1 = classIndices.Select(index => x_data_1[index]).ToArray();
+    plt.AddScatter(class_x_data_0, class_x_data_1, color: colors[i], markerSize: 5, lineWidth: 0);
+}
+
+plt.Title("Multi-class Data Visualization");
+
+#!csharp
+
+DisplayBitmap(plt.GetBitmap());
+
+#!csharp
+
+// Example usage with the tensors created earlier
+var df = CreateDataFrame(X_blob_tensor, y_blob_tensor);
+DisplayDataFrame(df);
+
+#!markdown
+
+## Building model
+
+#!csharp
+
+public class MultiClassModel : Module<torch.Tensor, torch.Tensor>
+{
+    private Sequential linear_layer_stack;
+
+    public MultiClassModel(int input_features, int output_features, int hidden_units = 8) : base("MultiClassModel")
+    {
+        // Initialize the layers
+        linear_layer_stack = Sequential(
+            Linear(input_features, hidden_units),
+            // ReLU(), // Uncomment to add non-linear layers
+            Linear(hidden_units, hidden_units),
+            // ReLU(), // Uncomment to add non-linear layers
+            Linear(hidden_units, output_features)
+        );
+
+        RegisterComponents();
+    }
+
+    public override Tensor forward(Tensor x)
+    {
+        return linear_layer_stack.forward(x);
+    }
+}
+
+#!csharp
+
+// Create an instance of BlobModel and send it to the target device
+var model_4 = new MultiClassModel(input_features: NUM_FEATURES, 
+                            output_features: NUM_CLASSES, 
+                            hidden_units: 8).to(device);
+
+#!markdown
+
+### Description of CrossEntropyLoss
+
+**CrossEntropyLoss** is a commonly used loss function in classification tasks, particularly in multi-class classification problems. It combines the concepts of **Softmax** and **Negative Log-Likelihood (NLL)** loss into a single function.
+
+### Key Points
+
+- **Softmax**: Converts raw prediction scores (logits) into probabilities by normalizing them across the classes.
+- **Negative Log-Likelihood (NLL)**: Measures the likelihood of the predicted probabilities matching the true class labels. It penalizes incorrect predictions more heavily.
+
+### Formula
+
+For a single sample, the cross-entropy loss is calculated as:
+
+$$ \text{Loss} = -\sum_{i=1}^{C} y_i \log(p_i) $$
+
+Where:
+- \( C \) is the number of classes.
+- \( y_i \) is the true label (1 if the class is the correct class, 0 otherwise).
+- \( p_i \) is the predicted probability for class \( i \).
+
+### Usage
+
+- **Multi-Class Classification**: CrossEntropyLoss is particularly effective for tasks where each sample belongs to one of multiple classes.
+- **TorchSharp**: In TorchSharp, CrossEntropyLoss can be used to calculate the loss between the predicted logits and the true class labels.
+
+`Docs:` https://pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
+
+#!csharp
+
+// Define the loss function
+var loss_fn = CrossEntropyLoss();
+
+// Define the optimizer
+var optimizer = torch.optim.SGD(model_4.parameters(), 0.001);
+
+#!csharp
+
+// Perform a single forward pass on the data
+var output = model_4.forward(X_blob_train.to(device)).slice(0, 0, 5, 1);
+
+#!csharp
+
+Console.WriteLine(output.ToString(TorchSharp.TensorStringStyle.Numpy));
+
+#!csharp
+
+// Extract the shape of the first prediction sample
+var first_sample_shape = output[0].shape;
+
+#!csharp
+
+// Print the shape and the number of classes
+Console.WriteLine($"Shape of the first prediction sample: {string.Join(", ", first_sample_shape)}");
+Console.WriteLine($"Number of classes: {NUM_CLASSES}");
+
+#!markdown
+
+The result we obtained shows the shape of the first prediction sample and the number of classes in our multi-class classification model. Currently, the model outputs logits, which are raw prediction scores. To convert these logits into meaningful prediction labels, we need to use the softmax activation function.
+
+The softmax function transforms the logits into probabilities, indicating the likelihood of each class being the correct one. This allows us to determine the predicted class by selecting the one with the highest probability.
+
+In summary, the softmax function helps us convert the model's raw output (logits) into interpretable prediction probabilities and labels.
+
+#!csharp
+
+// Perform a forward pass on the test data to get the logits
+var y_logits = model_4.forward(X_blob_test.to(device));
+
+// Perform softmax calculation on logits across dimension 1 to get prediction probabilities
+var y_pred_probs = softmax(y_logits, 1);
+
+// Print the logits and prediction probabilities
+Console.WriteLine("Logits:");
+Console.WriteLine(y_logits.slice(0, 0, 5, 1).ToString(TorchSharp.TensorStringStyle.Numpy));
+
+Console.WriteLine("Prediction Probabilities:");
+Console.WriteLine(y_pred_probs.slice(0, 0, 5, 1).ToString(TorchSharp.TensorStringStyle.Numpy));
+
+#!markdown
+
+After passing the logits through the softmax function, we obtained prediction probabilities for each class. Although the outputs may still appear as jumbled numbers (since the model hasn't been trained and is predicting using random patterns), there's a key characteristic to note: the probabilities for each individual sample now sum to 1 (or very close to it). This is a result of the softmax function, which normalizes the logits into a probability distribution over the classes.
+
+#!csharp
+
+// Extract the first sample from the prediction probabilities
+var first_sample = y_pred_probs[0];
+
+// Sum the elements of the first sample
+var sum_first_sample = first_sample.sum();
+
+// Print the result
+Console.WriteLine($"Sum of the first sample output of the softmax activation function: {sum_first_sample.item<float>()}");
+
+#!markdown
+
+The prediction probabilities indicate how much the model believes the input sample belongs to each class. Each value in y_pred_probs corresponds to a class, and the index of the highest value represents the class the model predicts for that specific data sample. To determine the predicted class, we can use the torch.argmax() function to find the index of the highest value.
+
+#!csharp
+
+// Extract the first sample from the prediction probabilities
+var first_sample = y_pred_probs[0];
+
+// Print the prediction probabilities for the first sample
+Console.WriteLine("Prediction probabilities for the first sample:");
+Console.WriteLine(first_sample.ToString(TorchSharp.TensorStringStyle.Numpy));
+
+// Use torch.argmax to find the index of the highest value
+var predicted_class = first_sample.argmax();
+
+// Print the index of the highest value
+Console.WriteLine($"Index of the highest value (predicted class): {predicted_class.item<long>()}");
+
+#!markdown
+
+The output of `torch.argmax()` returns `1`, indicating that for the features `(X)` of the sample at index `0`, the model predicts the most likely class value `(y)` to be `1`. Currently, this prediction is based on random guessing, giving it a 25% chance of being correct (since there are four classes). However, these chances can be improved by training the model.
+
+#!csharp
+
+// Set the manual seed for reproducibility
+torch.manual_seed(42);
+
+// Set number of epochs
+int epochs = 10000;
+
+// Move data to target device
+X_blob_train = X_blob_train.to(device);
+y_blob_train = y_blob_train.to(device);
+X_blob_test = X_blob_test.to(device);
+y_blob_test = y_blob_test.to(device);
+
+// Define accuracy function
+Func<Tensor, Tensor, float> accuracy_fn = (y_true, y_pred) =>
+{
+    var correct = torch.eq(y_true, y_pred).sum().item<long>();
+    return (correct / (float)y_true.shape[0]) * 100.0f;
+};
+
+// Training loop
+for (int epoch = 0; epoch < epochs; epoch++)
+{
+    // Training
+    model_4.train();
+
+    // 1. Forward pass
+    var y_logits = model_4.forward(X_blob_train); // model outputs raw logits 
+    var y_pred = softmax(y_logits, 1).argmax(1); // go from logits -> prediction probabilities -> prediction labels
+
+    // 2. Calculate loss and accuracy
+    var loss = loss_fn.forward(y_logits, y_blob_train);
+    var acc = Metrics.AccuracyFn(y_blob_train, y_pred);
+
+    // 3. Optimizer zero grad
+    optimizer.zero_grad();
+
+    // 4. Loss backwards
+    loss.backward();
+
+    // 5. Optimizer step
+    optimizer.step();
+
+    // Initialize test loss and accuracy
+    Tensor test_loss;
+    float test_acc;
+
+    // Testing
+    model_4.eval();
+    using (var noGrad = torch.no_grad())
+    {
+        // 1. Forward pass
+        var test_logits = model_4.forward(X_blob_test);
+        var test_pred = softmax(test_logits, 1).argmax(1);
+
+        // 2. Calculate test loss and accuracy
+        test_loss = loss_fn.call(test_logits, y_blob_test);
+        test_acc = accuracy_fn(y_blob_test, test_pred);
+    }
+
+    // Print out what's happening
+    if (epoch % 10 == 0)
+    {
+        Console.WriteLine($"Epoch: {epoch} | Loss: {loss.item<float>():F5}, Acc: {acc:F2}% | Test Loss: {test_loss.item<float>():F5}, Test Acc: {test_acc:F2}%");
+    }
+}
+
+#!csharp
+
+// Set the model to evaluation mode
+model_4.eval();
+
+torch.Tensor y_logits_validation = null;
+
+// Disable gradient calculation
+using (var noGrad = torch.no_grad())
+{
+    // Perform a forward pass on the test data to get the logits
+    y_logits_validation = model_4.forward(X_blob_test.to(device));
+
+    // View the first 10 predictions
+    var first_10_predictions = y_logits_validation.slice(0, 0, 5, 1);
+
+    // Print the first 10 predictions
+    Console.WriteLine("First 10 predictions:");
+    Console.WriteLine(first_10_predictions.ToString(TorchSharp.TensorStringStyle.Numpy));
+}
+
+#!csharp
+
+// Turn predicted logits into prediction probabilities
+var y_pred_probs = softmax(y_logits_validation.to(device), 1);
+
+// Turn prediction probabilities into prediction labels
+var y_preds = y_pred_probs.argmax(1);
+
+// Compare first 10 model predictions and test labels
+var first_5_preds = y_preds.slice(0, 0, 5, 1);
+var first_5_labels = y_blob_test.slice(0, 0, 5, 1);
+
+// Print the first 10 predictions and labels
+Console.WriteLine($"Predictions: {first_5_preds.ToString(TorchSharp.TensorStringStyle.Numpy)}");
+Console.WriteLine($"Labels: {first_5_labels.ToString(TorchSharp.TensorStringStyle.Numpy)}");
+
+// Calculate and print the test accuracy
+var test_accuracy = accuracy_fn(y_blob_test.to(device), y_preds);
+Console.WriteLine($"Test accuracy: {test_accuracy}%");
+
+#!markdown
+
+![alt text](../assets/multiclass.png)

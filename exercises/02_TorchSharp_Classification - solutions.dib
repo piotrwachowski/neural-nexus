@@ -1,0 +1,555 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+
+#!csharp
+
+#i "nuget: https://api.nuget.org/v3/index.json"
+#r "nuget: TorchSharp-cpu, 0.102.6"
+#r "nuget: libtorch-cpu-win-x64, 2.2.1.1"
+#r "nuget: ScottPlot, 4.1.36"
+#r "nuget: System.Drawing.Common"
+#r "nuget: Microsoft.Data.Analysis"
+#r "nuget: NumSharp"
+
+#!csharp
+
+using TorchSharp;
+using TorchSharp.Modules;
+using static TorchSharp.torch;
+using static TorchSharp.TensorExtensionMethods;
+
+using System;
+using ScottPlot;
+using NumSharp;
+using System.Drawing;
+using System.IO;
+using Microsoft.Data.Analysis;
+using Microsoft.DotNet.Interactive.Formatting;
+
+#!csharp
+
+Console.WriteLine($"TorchSharp version: {torch.__version__}");
+Console.WriteLine($"CLR version: {System.Environment.Version}");
+Console.WriteLine($"CUDA available: {torch.cuda.is_available()}");
+Console.WriteLine($"GPU count: {torch.cuda.device_count()}");
+
+// Set the default tensor string style to C#.
+torch.TensorStringStyle = torch.csharp;
+
+// Set the device to CUDA if available, otherwise CPU.
+static var device = torch.cuda.is_available() ? torch.CUDA : torch.CPU;
+
+Console.WriteLine($"Device: {device}, Style: {torch.TensorStringStyle}");
+
+#!csharp
+
+// Helper functions
+
+(Tensor, Tensor) MakeCircles(int n_samples, double noise, int random_state)
+{
+    var rnd = new Random(random_state);
+    var X = torch.zeros(new long[] { n_samples, 2 }, dtype: torch.float32);
+    var y = torch.zeros(new long[] { n_samples }, dtype: torch.float32);
+
+    for (int i = 0; i < n_samples; i++)
+    {
+        double angle = 2 * Math.PI * rnd.NextDouble();
+        double radius = (i < n_samples / 2) ? 1.0 : 0.5;
+        radius += noise * rnd.NextDouble();
+
+        X[i, 0] = (float)(radius * Math.Cos(angle));
+        X[i, 1] = (float)(radius * Math.Sin(angle));
+        y[i] = (i < n_samples / 2) ? 0 : 1;
+    }
+
+    // Shuffle the dataset
+    var indices = Enumerable.Range(0, n_samples).OrderBy(_ => rnd.Next()).ToArray();
+    var X_shuffled = torch.zeros_like(X);
+    var y_shuffled = torch.zeros_like(y);
+
+    for (int i = 0; i < n_samples; i++)
+    {
+        X_shuffled[i] = X[indices[i]];
+        y_shuffled[i] = y[indices[i]];
+    }
+
+    return (X_shuffled, y_shuffled);
+}
+
+void DisplayBitmap(System.Drawing.Bitmap bitmap)
+{
+    // Convert the Bitmap to a base64 string
+    string base64String;
+    using (MemoryStream ms = new MemoryStream())
+    {
+        bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+        byte[] imgBytes = ms.ToArray();
+        base64String = Convert.ToBase64String(imgBytes);
+    }
+
+    // Display the image using HTML
+    string html = $"<img src='data:image/png;base64,{base64String}' />";
+    Microsoft.DotNet.Interactive.Formatting.Formatter.Register<string>((content, writer) =>
+    {
+        writer.Write(content);
+    }, "text/html");
+
+    html.DisplayAs("text/html");
+}
+
+void DisplayScatterPlot((Tensor X, Tensor y) data)
+{
+    var (X, y) = data;
+
+    // Extract data for plotting
+    var x1 = X.index_select(1, torch.tensor(0)).data<float>().ToArray().Select(f => (double)f).ToArray();
+    var x2 = X.index_select(1, torch.tensor(1)).data<float>().ToArray().Select(f => (double)f).ToArray();
+    var labels = y.data<float>().ToArray();
+
+    // Create a new ScottPlot plot
+    var plt = new ScottPlot.Plot(600, 400);
+
+    // Separate data by label
+    var x1Label0 = x1.Where((_, i) => labels[i] == 0).ToArray();
+    var x2Label0 = x2.Where((_, i) => labels[i] == 0).ToArray();
+    var x1Label1 = x1.Where((_, i) => labels[i] == 1).ToArray();
+    var x2Label1 = x2.Where((_, i) => labels[i] == 1).ToArray();
+
+    // Add scatter plots for each label with lineWidth set to 0
+    plt.AddScatter(x1Label0, x2Label0, color: System.Drawing.Color.Red, lineWidth: 0);
+    plt.AddScatter(x1Label1, x2Label1, color: System.Drawing.Color.Blue, lineWidth: 0);
+
+    // Customize plot
+    plt.Title("Scatter Plot of Circles Dataset");
+    plt.XLabel("X1");
+    plt.YLabel("X2");
+
+    // Render the plot and display it using the DisplayBitmap function
+    var bmp = plt.Render();
+    DisplayBitmap(bmp);
+}
+
+#!markdown
+
+# TorchSharp Classification Exercises
+
+#!markdown
+
+## 1. Based on `MakeCircle()` function recreate Scikit-Leanr's `make_moons()` logic in C#
+
+#!markdown
+
+- **Change the Circle Generation Logic**
+  - **Current (Circle logic):** In the `MakeCircles` function, you generate full circles by using a random angle between 0 and 2π and adjusting the radius for each point.
+  - **New (Half-Moon logic):** In `MakeMoons`, each "moon" is represented by a half-circle. The first half-moon is the upper half of a circle (0 to π), and the second half-moon is shifted down and slightly right.
+  - **Update the angle generation:**
+    - For the first half-moon, generate an angle between 0 and π.
+    - For the second half-moon, generate the same but shift the points to the right and down.
+
+- **Remove the Radius Variation**
+  - **Current (Circle logic):** You vary the radius based on the sample index (1.0 for the outer circle, 0.5 for the inner circle).
+  - **New (No radius change):** In `MakeMoons`, there is no radius variation like in circles. Simply generate points based on the angle for both moons without adjusting their distance from the center.
+
+- **Shift Coordinates for the Second Moon**
+  - **Current (Circle logic):** Both classes are centered around the origin, forming concentric circles.
+  - **New (Shift logic):** For the second half-moon, shift the coordinates of the points. The common practice is:
+    - Shift the x-coordinates to the right by 1.
+    - Shift the y-coordinates down by -0.5 to avoid overlap with the first moon.
+
+- **Class Labels**
+  - **Current (Circle logic):** Class 0 for the outer circle and Class 1 for the inner circle.
+  - **New (Moon logic):** Use the same approach, with Class 0 for the first half-moon and Class 1 for the second half-moon.
+
+- **Apply Noise**
+  - **Current (Circle logic):** Noise is added to both x and y based on random values for each point.
+  - **New (Same noise logic):** This can remain unchanged. Apply random noise to both the x and y coordinates of each point for both moons.
+
+
+  **Output data should look like on the following picture:**
+  
+  ![Scatter Plot of Moons](../assets/scatter_plot_moons.png)
+
+**Circle Logic (Before):**
+``` csharp
+for (int i = 0; i < n_samples; i++)
+{
+    double angle = 2 * Math.PI * rnd.NextDouble(); // Full circle
+    double radius = (i < n_samples / 2) ? 1.0 : 0.5; // Outer and inner circles
+    radius += noise * rnd.NextDouble();
+
+    X[i, 0] = (float)(radius * Math.Cos(angle));
+    X[i, 1] = (float)(radius * Math.Sin(angle));
+    y[i] = (i < n_samples / 2) ? 0 : 1; // Class labels
+}
+```
+
+**Moon Logic (After)**
+``` csharp
+for (int i = 0; i < n_samples; i++)
+{
+    double angle;
+
+    if (i < n_samples / 2)
+    {
+        // First half-moon (upper)
+        angle = Math.PI * rnd.NextDouble(); // Half-circle between 0 and π
+        X[i, 0] = (float)(Math.Cos(angle)); // X-coordinate
+        X[i, 1] = (float)(Math.Sin(angle)); // Y-coordinate
+        y[i] = 0; // Class 0
+    }
+    else
+    {
+        // Second half-moon (lower)
+        angle = Math.PI * rnd.NextDouble(); // Half-circle between 0 and π
+        X[i, 0] = (float)(1 - Math.Cos(angle)); // Shifted X-coordinate
+        X[i, 1] = (float)(-Math.Sin(angle) - 0.5); // Shifted Y-coordinate
+        y[i] = 1; // Class 1
+    }
+
+    // Apply noise if any
+    X[i, 0] += (float)(noise * (rnd.NextDouble() - 0.5));
+    X[i, 1] += (float)(noise * (rnd.NextDouble() - 0.5));
+}
+```
+
+#!csharp
+
+// define 
+(Tensor, Tensor) MakeMoons(int n_samples, double noise, int random_state)
+{
+    var rnd = new Random(random_state);
+    var X = torch.zeros(new long[] { n_samples, 2 }, dtype: torch.float32);
+    var y = torch.zeros(new long[] { n_samples }, dtype: torch.float32);
+
+    for (int i = 0; i < n_samples; i++)
+    {
+        double angle, radius = 1.0;
+
+        if (i < n_samples / 2)
+        {
+            // First half moon (upper)
+            angle = Math.PI * rnd.NextDouble(); // Half-circle between 0 and π
+            X[i, 0] = (float)(Math.Cos(angle)); // X-coordinate
+            X[i, 1] = (float)(Math.Sin(angle)); // Y-coordinate
+            y[i] = 0; // Class 0
+        }
+        else
+        {
+            // Second half moon (lower)
+            angle = Math.PI * rnd.NextDouble(); // Half-circle between 0 and π
+            X[i, 0] = (float)(1 - Math.Cos(angle)); // Shifted X-coordinate
+            X[i, 1] = (float)(-Math.Sin(angle) - 0.5); // Shifted Y-coordinate to form second moon
+            y[i] = 1; // Class 1
+        }
+
+        // Apply noise if any
+        X[i, 0] += (float)(noise * (rnd.NextDouble() - 0.5));
+        X[i, 1] += (float)(noise * (rnd.NextDouble() - 0.5));
+    }
+
+    // Shuffle the dataset
+    var indices = Enumerable.Range(0, n_samples).OrderBy(_ => rnd.Next()).ToArray();
+    var X_shuffled = torch.zeros_like(X);
+    var y_shuffled = torch.zeros_like(y);
+
+    for (int i = 0; i < n_samples; i++)
+    {
+        X_shuffled[i] = X[indices[i]];
+        y_shuffled[i] = y[indices[i]];
+    }
+
+    return (X_shuffled, y_shuffled);
+}
+
+#!csharp
+
+// Visualize the dataset using DisplayScatterPlot function
+DisplayScatterPlot(MakeMoons(1000, 0.1, 42));
+
+#!csharp
+
+// Split the data into train and test sets (80% train, 20% test)
+var (X, y) = MakeMoons(1000, 0.1, 42);
+
+(Tensor, Tensor, Tensor, Tensor) TrainTestSplit(Tensor X, Tensor y, double testSize = 0.2, int randomState = 42)
+{
+    var rand = new Random(randomState);
+    var indices = Enumerable.Range(0, (int)X.shape[0]).OrderBy(x => rand.Next()).ToArray();
+    int testCount = (int)(X.shape[0] * testSize);
+    int trainCount = (int)X.shape[0] - testCount;
+
+    var trainIndices = indices.Take(trainCount).ToArray();
+    var testIndices = indices.Skip(trainCount).Take(testCount).ToArray();
+
+    var X_train = X.index_select(0, torch.tensor(trainIndices));
+    var X_test = X.index_select(0, torch.tensor(testIndices));
+    var y_train = y.index_select(0, torch.tensor(trainIndices));
+    var y_test = y.index_select(0, torch.tensor(testIndices));
+
+    return (X_train, X_test, y_train, y_test);
+}
+
+var (X_train, X_test, y_train, y_test) = TrainTestSplit(X, y, 0.2, 42);
+
+// Print the lengths of the splits
+Console.WriteLine($"Length of X_train: {string.Join(", ", X_train.shape)}");
+Console.WriteLine($"Length of X_test: {string.Join(", ", X_test.shape)}");
+Console.WriteLine($"Length of y_train: {string.Join(", ", y_train.shape)}");
+Console.WriteLine($"Length of y_test: {string.Join(", ", y_test.shape)}");
+
+#!markdown
+
+## 2. Build a model by subclassing nn.Module that incorporates non-linear activation functions and is capable of fitting the data you created in 1.
+
+#!csharp
+
+// define the model
+class MoonModelV0 : torch.nn.Module<torch.Tensor, torch.Tensor>
+{
+    private Linear layer1;
+    private Linear layer2;
+    private Linear layer3;
+    private ReLU relu;
+
+    public MoonModelV0(int in_features, int out_features, int hidden_units) : base("MoonModelV0")
+    {
+        layer1 = torch.nn.Linear(in_features, hidden_units);
+        layer2 = torch.nn.Linear(hidden_units, hidden_units);
+        layer3 = torch.nn.Linear(hidden_units, out_features);
+        relu = torch.nn.ReLU();
+        RegisterComponents();
+    }
+
+    public override Tensor forward(Tensor x)
+    {
+        x = relu.forward(layer1.forward(x));
+        x = relu.forward(layer2.forward(x));
+        x = layer3.forward(x);
+        return x;
+    }
+}
+
+#!csharp
+
+// Instantiate the model and put it to the target device
+var model_0 = new MoonModelV0(in_features: 2, out_features: 1, hidden_units: 10).to(device);
+
+#!csharp
+
+// Print model parameters
+model_0.state_dict().ToList().ForEach(p => {
+        Console.WriteLine($"Key: {p.Key} | Value: {p.Value.data<float>()[0]} | Requires grad: {p.Value.requires_grad} | {p.Value}");
+    }
+);
+
+#!markdown
+
+## 3. Setup a binary classification compatible loss function and optimizer to use when training the model built in 2.
+
+#!csharp
+
+// Setup loss function
+var loss_fn = torch.nn.BCEWithLogitsLoss();
+
+// Setup optimizer to optimize model's parameters
+var optimizer = torch.optim.SGD(model_0.parameters(), 0.01);
+
+#!markdown
+
+## 4. Create a training and testing loop to fit the model you created in 2 to the data you created in 1.
+
+#!csharp
+
+// Training loop
+
+// Set manual seed for reproducibility
+torch.manual_seed(42);
+
+// Train model for 300 epochs
+int epochs = 300;
+
+// Send data to target device
+X_train = X_train.to(device);
+y_train = y_train.to(device);
+X_test = X_test.to(device);
+y_test = y_test.to(device);
+
+// Define accuracy function
+Func<Tensor, Tensor, float> accuracy_fn = (y_true, y_pred) =>
+{
+    var correct = torch.eq(y_true, y_pred).sum().item<long>();
+    return (correct / (float)y_true.shape[0]) * 100.0f;
+};
+
+for (int epoch = 0; epoch < epochs; epoch++)
+{
+    // Put model in train mode
+    model_0.train();
+
+    // 1. Forward pass
+    var y_logits = model_0.forward(X_train).squeeze();
+    var y_pred_probs = torch.sigmoid(y_logits);
+    var y_pred = torch.round(y_pred_probs);
+
+    // 2. Calculate loss
+    var loss = loss_fn.call(y_logits, y_train);
+    var acc = accuracy_fn(y_pred, y_train.to_type(ScalarType.Int32));
+
+    // 3. Zero gradients
+    optimizer.zero_grad();
+
+    // 4. Backpropagation
+    loss.backward();
+
+    // 5. Step the optimizer
+    optimizer.step();
+
+    //Testing
+    model_0.eval();
+
+    // Perform testing every 20 epochs
+    if (epoch % 20 == 0)
+    {
+    torch.Tensor test_loss = 0;
+    double test_acc = 0;
+        using (var noGrad = torch.no_grad())
+        {
+            // 1. Forward pass
+            var test_logits = model_0.forward(X_test).squeeze();
+            var test_pred = torch.round(torch.sigmoid(test_logits));
+
+            // 2. Calculate the loss/acc
+            test_loss = loss_fn.forward(test_logits, y_test);
+            test_acc = accuracy_fn(test_pred, y_test.to_type(ScalarType.Int32));
+
+        }
+        Console.WriteLine($"Epoch: {epoch} | Train loss: {loss.item<float>():F3} | Test loss: {test_loss.item<float>():F3} | Train acc: {acc:F2}% | Test acc: {test_acc:F2}%");
+    }
+}
+
+#!markdown
+
+## 5. **Make predictions with the trained model on the test data.**
+
+- Visualize these predictions against the original training and testing data.
+
+#!csharp
+
+// Make predictions with the model
+
+// Put model in evaluation mode
+model_0.eval();
+
+// Disable gradient calculation
+using (var noGrad = torch.no_grad())
+{
+    // Make predictions with the model
+    var y_preds = model_0.forward(X_test);
+    var y_pred_probs = torch.sigmoid(y_preds);
+    var y_pred_labels = torch.round(y_pred_probs);
+
+    DisplayScatterPlot((X_test.cpu(), y_pred_labels.cpu()));
+}
+
+#!markdown
+
+## 6. **Save your trained model to a file.**
+
+#!csharp
+
+// Create path to save the model
+var parentFolder = Directory.GetParent(Directory.GetCurrentDirectory());
+var modelFolder = Path.Combine(parentFolder.FullName, "models");
+var modelPath = Path.Combine(modelFolder, "LinearRegressionModel.pt");
+
+// Ensure the directory exists
+if (!Directory.Exists(modelFolder))
+{
+    Directory.CreateDirectory(modelFolder);
+}
+
+#!csharp
+
+// Save the model to file
+model_0.save(modelPath);
+
+#!csharp
+
+// Create new instance of model and load saved model data
+var LoadedModel = new MoonModelV0(in_features: 2, out_features: 1, hidden_units: 10).to(device);
+LoadedModel.load(modelPath);
+
+#!csharp
+
+// Make predictions with loaded model and compare them to the previous
+using(torch.no_grad()) // inference mode
+{
+    LoadedModel.eval();
+    var prediction = LoadedModel.forward(X_test);
+    DisplayScatterPlot((X_test.cpu(), torch.round(torch.sigmoid(prediction)).cpu()));
+}
+
+#!markdown
+
+## 7. Replicate the Tanh (hyperbolic tangent) activation function in pure C#
+
+`Hint:` https://pytorch.org/docs/stable/generated/torch.nn.Tanh.html
+
+$$ f(x) = \tanh(x) = \frac{e^x - e^{-x}}{e^x + e^{-x}} $$
+
+#!csharp
+
+// Create a straight line tensor
+var TanhTensor = torch.arange(-10, 10, 1, torch.float32);
+
+#!csharp
+
+// Visualize the toy tensor
+var plt = new ScottPlot.Plot(600, 400);
+plt.AddSignal(TanhTensor.to(torch.float64).data<double>().ToArray());
+plt.Title("Toy Tensor Visualization");
+
+// Display the bitmap directly
+DisplayBitmap(plt.GetBitmap());
+
+#!csharp
+
+// Test torch.tanh() on the tensor and plot it
+var TanhOutput = torch.tanh(TanhTensor);
+
+// Visualize the tanh tensor
+var plt = new ScottPlot.Plot(600, 400);
+plt.AddSignal(TanhOutput.to(torch.float64).data<double>().ToArray());
+plt.Title("Toy Tanh Visualization");
+
+// Display the bitmap directly
+DisplayBitmap(plt.GetBitmap());
+
+#!csharp
+
+// Replicate torch.tanh() and plot it
+
+Func<torch.Tensor, torch.Tensor> tanh = x =>
+{
+    var result = torch.empty_like(x);
+    for (int i = 0; i < x.shape[0]; i++)
+    {
+        double value = x[i].ToDouble();
+        double expX = Math.Exp(value);
+        double expNegX = Math.Exp(-value);
+        result[i] = (expX - expNegX) / (expX + expNegX);
+    }
+    return result;
+};
+
+// Test the custom tanh function on the tensor and plot it
+var CustomTanhOutput = tanh(TanhTensor);
+
+// Visualize the custom tanh tensor
+var plt = new ScottPlot.Plot(600, 400);
+plt.AddSignal(CustomTanhOutput.to(torch.float64).data<double>().ToArray());
+plt.Title("Toy CustomTanhOutput Visualization");
+
+// Display the bitmap directly
+DisplayBitmap(plt.GetBitmap());

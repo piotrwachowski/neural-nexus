@@ -1,0 +1,172 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+
+#!markdown
+
+# TorchSharp Fundamentals Exercises
+
+#!markdown
+
+## 1. Create a random tensor with shape (7, 7).
+
+#!csharp
+
+// include TorchSharp
+
+// Create random tensor
+
+#!markdown
+
+## 2. Perform a matrix multiplication on the tensor from 2 with another random tensor with shape (1, 7)
+
+#!csharp
+
+// Create another random tensor with shape (1, 7) - need transpose?
+
+// Perform matrix multiplication 
+
+#!markdown
+
+## 3. Set the random seed, create two random tensors and perform matrix multiplication
+
+#!csharp
+
+// Set manual seed
+
+
+// Create two random tensors - chose different shapes
+
+
+// Matrix multiply tensors
+
+#!markdown
+
+## 4. Perform matrix multiplication on tensors from task #3 and create a tensor containing only zeros with the same dimensions and shape as the result tensor of the multiplication.
+
+#!csharp
+
+// Perform matmul
+
+// Create tensor with zeros
+
+#!markdown
+
+## 5. Find the maximum and minimum values of the output of #3
+
+#!csharp
+
+// Find max
+
+// Find min
+
+#!markdown
+
+## 6. Find the maximum and minimum index of the output of #3
+
+#!csharp
+
+// Find arg max
+
+
+// Find arg min
+
+#!markdown
+
+## 7. Make a random tensor with shape (1, 1, 1, 10) and then create a new tensor with all the 1 dimensions removed to be left with a tensor of shape (10). Set the random seed to 7 when you create it and print out the first tensor and it's shape as well as the second tensor and it's shape.
+
+#!csharp
+
+// Set random seed
+
+
+// Create random tensor with shape (1, 1, 1, 10)
+
+
+// Remove single dimensions
+
+
+// Print out tensors and their shapes
+
+#!markdown
+
+## 8. Create random tensor  with shape (2, 3) the create tensor of ones with shape (3, 2) and print them in NumPy format
+
+#!csharp
+
+// Create random tensor with shape (2, 3)
+
+// Create random tensor with shape (3, 2)
+
+// Print tensors and their shapes in a NumPy format
+
+#!markdown
+
+## 9. Perform `matmul` operation on tensors from #8 and print the result in a CSharp format
+
+#!csharp
+
+// Perform matrix multiplication - matmul
+
+// Print result tensor in CSharp format
+
+#!markdown
+
+## 10. Reshape tensor from #9 to (3, 3) - is it possible? If not chose the shape it is possible to reshape to
+
+#!csharp
+
+// Reshape tensor to (3, 3)
+
+// if applies reshape to allowed shape
+
+#!markdown
+
+## 11. Print first element of reshaped tensor from #10
+
+#!csharp
+
+// Print first element of reshaped tensor
+
+#!markdown
+
+## 12. Create tensor with values from 0 to 10 (excluded), calculate standar deviation and mean value, then print tensor in NumPy format, display values of mean and std
+
+#!csharp
+
+// Create tensor with values from 0 to 10 (exluded - 0, 1, 2 ... 9)
+
+// Calculate mean of tensor
+
+// Calculate std of tensor
+
+// Print tensor in NumPy format
+
+// Print values of mean and std
+
+#!markdown
+
+## 13. Create random tesor with shape (4, 4). Print values of this tensor in any tensor string format. Slice the created tensor to get sub-tensor (2x2 from top-left corner)
+
+#!csharp
+
+// Create random tensor with shape (4, 4)
+
+// Print tensor in any tensor string format
+
+// Slice tensor to get sub-tensor with first 2 rows and first 2 columns
+
+// Print sub-tensor in any tensor string format format
+
+#!markdown
+
+## 14. Create two random tensors with shape (2, 2) and concatenate them together - what is the shape of result tensor?
+Hint: torch.cat
+
+#!csharp
+
+// Create two random tensors with shape (2, 2)
+
+// Concatenate tensors along rows
+
+// Print all tensors in Numpy format

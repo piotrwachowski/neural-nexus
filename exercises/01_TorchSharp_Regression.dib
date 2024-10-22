@@ -1,0 +1,162 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+
+#!csharp
+
+#r "nuget: TorchSharp-cpu, 0.102.6"
+#r "nuget: libtorch-cpu-win-x64, 2.2.1.1"
+
+// Add additional NuGet packages here
+
+#!csharp
+
+// Add neccecary namespaces
+
+#!csharp
+
+// Create device agnostic code
+
+#!markdown
+
+# TorchSharp Regression Exercises
+
+#!markdown
+
+## 1. **Create a linear dataset using the formula for linear regression:** (weight * X + bias).
+   - Set `weight` to `0.3` and `bias` to `0.9`. Ensure there are at least 100 data points in total.
+   - Split the dataset into 80% for training and 20% for testing.
+   - Plot the training and testing data to visualize the dataset.
+
+**Your output should look something like this:**
+
+- **Number of X samples:** 100
+- **Number of y samples:** 100
+
+**First 10 X & y samples:**
+
+- **X:** `tensor([0.0000, 0.0100, 0.0200, 0.0300, 0.0400, 0.0500, 0.0600, 0.0700, 0.0800, 0.0900])`
+- **y:** `tensor([0.9000, 0.9030, 0.9060, 0.9090, 0.9120, 0.9150, 0.9180, 0.9210, 0.9240, 0.9270])`
+
+#!csharp
+
+// Create the data parameters
+
+// Make X and y using linear regression feature
+
+// Print the number of samples in X and y
+
+// Print the first 10 samples of X and y
+
+#!csharp
+
+// Split the data into training and testing
+
+#!csharp
+
+// Plot the training and testing data 
+
+#!markdown
+
+## 2. **Build a PyTorch model by subclassing `nn.Module<torch.Tensor, torch.Tensor>`.**
+
+- Inside, there should be a randomly initialized `nn.Parameter()` with `requires_grad=True`, one for weights and one for bias.
+- Implement the `forward()` method to compute the linear regression function you used to create the dataset in step 1.
+- Once you've constructed the model, create an instance of it and check its `state_dict()`.
+
+**Note:** If you'd like to use `nn.Linear()` instead of `nn.Parameter()`, you can.
+
+#!csharp
+
+// Create TorchSharp linear regression model by subclassing nn.Module
+
+#!csharp
+
+// Instantiate the model and put it to the target device
+
+#!csharp
+
+// Print model parameters
+
+#!markdown
+
+## 3. **Create a loss function and optimizer using `nn.L1Loss()` and `torch.optim.SGD(params, lr)` respectively.**
+
+- Set the learning rate of the optimizer to `0.01`, and the parameters to optimize should be the model parameters from the model you created in step 2.
+- Write a training loop to perform the appropriate training steps for 300 epochs.
+- The training loop should test the model on the test dataset every 20 epochs.
+
+#!csharp
+
+// Create the loss function and optimizer
+
+#!csharp
+
+// Training loop
+
+// Train model for 300 epochs
+
+// Send data to target device
+
+for (int epoch = 0; epoch < epochs; epoch++)
+{
+    // Put model in train mode
+
+    // 1. Forward pass
+
+    // 2. Calculate loss
+
+    // 3. Zero gradients
+
+    // 4. Backpropagation
+
+    // 5. Step the optimizer
+
+    // Perform testing every 20 epochs
+    if (epoch % 20 == 0)
+    {
+        // Put model in evaluation mode and setup inference context
+            
+        // 1. Forward pass
+        
+
+        // 2. Calculate test loss
+        
+
+        // Print out what's happening
+        Console.WriteLine($"Epoch: {epoch} | Train loss: {loss.item<float>():F3} | Test loss: {test_loss.item<float>():F3}");
+    }
+}
+
+#!markdown
+
+## 4. **Make predictions with the trained model on the test data.**
+
+- Visualize these predictions against the original training and testing data.
+
+#!csharp
+
+// Make predictions with the model
+
+#!csharp
+
+// Plot the predictions
+
+#!markdown
+
+## 5. **Save your trained model to a file.**
+
+- Create a new instance of the model class you made in step 2 and load the model data you just saved into it.
+- Perform predictions on your test data with the loaded model and confirm they match the original model predictions from step 4.
+
+#!csharp
+
+// Save the model to file
+
+#!csharp
+
+// Create new instance of model and load saved model data
+
+#!csharp
+
+// Make predictions with loaded model and compare them to the previous

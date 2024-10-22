@@ -1,0 +1,867 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+
+#!markdown
+
+# Environment Setup
+
+#!csharp
+
+#i "nuget: https://api.nuget.org/v3/index.json"
+#r "nuget: TorchSharp-cpu, 0.102.6"
+#r "nuget: libtorch-cpu-win-x64, 2.2.1.1"
+#r "nuget: ScottPlot, 4.1.36"
+#r "nuget: System.Drawing.Common"
+#r "nuget: NumSharp, 0.30.0"
+#r "nuget: Microsoft.Data.Analysis"
+
+#!csharp
+
+using TorchSharp;
+using TorchSharp.Modules;
+using static TorchSharp.torch;
+using static TorchSharp.TensorExtensionMethods;
+using NumSharp;
+
+#!csharp
+
+using System;
+using ScottPlot;
+using System.Drawing;
+using System.IO;
+using Microsoft.DotNet.Interactive.Formatting;
+using Microsoft.Data.Analysis;
+
+#!csharp
+
+Console.WriteLine($"TorchSharp version: {torch.__version__}");
+Console.WriteLine($"CLR version: {System.Environment.Version}");
+Console.WriteLine($"CUDA available: {torch.cuda.is_available()}");
+Console.WriteLine($"GPU count: {torch.cuda.device_count()}");
+
+// Set the default tensor string style to C#.
+torch.TensorStringStyle = torch.csharp;
+
+// Set the device to CUDA if available, otherwise CPU.
+static var device = torch.cuda.is_available() ? torch.CUDA : torch.CPU;
+
+Console.WriteLine($"Device: {device}, Style: {torch.TensorStringStyle}");
+
+#!csharp
+
+// Make device agnostic code
+var device = torch.cuda.is_available() ? torch.CUDA : torch.CPU;
+Console.WriteLine(device);
+
+#!markdown
+
+# Helper Functions
+
+#!markdown
+
+## Function: `MakeCircles`
+
+#!markdown
+
+### Signature:
+```csharp
+(Tensor, Tensor) MakeCircles(int n_samples, double noise, int random_state)
+```
+
+### Description:
+Generates a dataset of circles with specified parameters.
+
+### Parameters:
+| Parameter      | Type     | Description                                           |
+|----------------|----------|-------------------------------------------------------|
+| `n_samples`    | `int`    | Number of samples to generate                         |
+| `noise`        | `double` | Standard deviation of Gaussian noise added to the data|
+| `random_state` | `int`    | Seed for random number generator                      |
+
+### Returns:
+A tuple containing two tensors: `X` (features) and `y` (labels).
+
+#!csharp
+
+(Tensor, Tensor) MakeCircles(int n_samples, double noise, int random_state)
+{
+    var rnd = new Random(random_state);
+    var X = torch.zeros(new long[] { n_samples, 2 }, dtype: torch.float32);
+    var y = torch.zeros(new long[] { n_samples }, dtype: torch.float32);
+
+    for (int i = 0; i < n_samples; i++)
+    {
+        double angle = 2 * Math.PI * rnd.NextDouble();
+        double radius = (i < n_samples / 2) ? 1.0 : 0.5;
+        radius += noise * rnd.NextDouble();
+
+        X[i, 0] = (float)(radius * Math.Cos(angle));
+        X[i, 1] = (float)(radius * Math.Sin(angle));
+        y[i] = (i < n_samples / 2) ? 0 : 1;
+    }
+
+    // Shuffle the dataset
+    var indices = Enumerable.Range(0, n_samples).OrderBy(_ => rnd.Next()).ToArray();
+    var X_shuffled = torch.zeros_like(X);
+    var y_shuffled = torch.zeros_like(y);
+
+    for (int i = 0; i < n_samples; i++)
+    {
+        X_shuffled[i] = X[indices[i]];
+        y_shuffled[i] = y[indices[i]];
+    }
+
+    return (X_shuffled, y_shuffled);
+}
+
+#!markdown
+
+## Function: `DisplayDataFrame`
+
+#!markdown
+
+### Signature:
+```csharp
+void DisplayDataFrame(DataFrame df)
+```
+
+### Description:
+Displays the given DataFrame in a readable format.
+
+### Parameters:
+| Parameter | Type      | Description                     |
+|-----------|-----------|---------------------------------|
+| `df`      | `DataFrame` | The DataFrame to be displayed   |
+
+### Returns:
+This function does not return a value.
+
+#!csharp
+
+void DisplayDataFrame(DataFrame df, int rows = 10)
+{
+    // Calculate the maximum length of the values in each column
+    var maxColumnLength = df.Columns
+        .SelectMany(c => Enumerable.Range(0, (int)c.Length).Select(i => c[i].ToString().Length).Append(c.Name.Length))
+        .Max();
+
+    // Print the column names with padding
+    var columnNames = string.Join(" | ", df.Columns.Select(c => c.Name.PadRight(maxColumnLength)));
+    Console.WriteLine(columnNames);
+    Console.WriteLine(new string('-', columnNames.Length));
+
+    // Print the rows with padding
+    for (int i = 0; i < Math.Min(rows, df.Rows.Count); i++)
+    {
+        var row = df.Rows[i];
+        var rowValues = string.Join(" | ", row.Select((v, j) => v.ToString().PadRight(maxColumnLength)));
+        Console.WriteLine(rowValues);
+    }
+}
+
+#!markdown
+
+## Function: `CreateDataFrame`
+
+#!markdown
+
+### Signature:
+```csharp
+DataFrame CreateDataFrame(Tensor X, Tensor y)
+```
+
+### Description:
+Creates a DataFrame from the given tensors `X` and `y`.
+
+### Parameters:
+| Parameter | Type    | Description                     |
+|-----------|---------|---------------------------------|
+| `X`       | `Tensor`| Tensor containing feature data  |
+| `y`       | `Tensor`| Tensor containing label data    |
+
+### Returns:
+A `DataFrame` containing the features and labels.
+
+#!csharp
+
+DataFrame CreateDataFrame(Tensor X, Tensor y)
+{
+    var x1 = X.index_select(1, torch.tensor(0)).data<float>().ToArray();
+    var x2 = X.index_select(1, torch.tensor(1)).data<float>().ToArray();
+    var labels = y.data<float>().ToArray();
+
+    var df = new DataFrame();
+    df.Columns.Add(new PrimitiveDataFrameColumn<float>("X1", x1));
+    df.Columns.Add(new PrimitiveDataFrameColumn<float>("X2", x2));
+    df.Columns.Add(new PrimitiveDataFrameColumn<float>("Label", labels));
+
+    return df;
+}
+
+#!markdown
+
+## Function: `DisplayBitmap`
+
+#!markdown
+
+### Signature:
+```csharp
+void DisplayBitmap(System.Drawing.Bitmap bitmap)
+```
+
+### Description:
+Displays the given bitmap image in a readable format.
+
+### Parameters:
+| Parameter | Type                | Description                     |
+|-----------|---------------------|---------------------------------|
+| `bitmap`  | `System.Drawing.Bitmap` | The bitmap image to be displayed |
+
+### Returns:
+This function does not return a value.
+
+#!csharp
+
+void DisplayBitmap(System.Drawing.Bitmap bitmap)
+{
+    // Convert the Bitmap to a base64 string
+    string base64String;
+    using (MemoryStream ms = new MemoryStream())
+    {
+        bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+        byte[] imgBytes = ms.ToArray();
+        base64String = Convert.ToBase64String(imgBytes);
+    }
+
+    // Display the image using HTML
+    string html = $"<img src='data:image/png;base64,{base64String}' />";
+    Microsoft.DotNet.Interactive.Formatting.Formatter.Register<string>((content, writer) =>
+    {
+        writer.Write(content);
+    }, "text/html");
+
+    html.DisplayAs("text/html");
+}
+
+#!markdown
+
+## Function: `DisplayScatterPlot`
+
+#!markdown
+
+### Signature:
+```csharp
+void DisplayScatterPlot((Tensor X, Tensor y) data)
+```
+
+### Description:
+Displays a scatter plot of the given circles dataset using the provided tensors `X` and `y`.
+
+### Parameters:
+| Parameter | Type                | Description                     |
+|-----------|---------------------|---------------------------------|
+| `data`    | `(Tensor X, Tensor y)` | A tuple containing the feature tensor `X` and the label tensor `y` |
+
+### Returns:
+This function does not return a value.
+
+#!csharp
+
+void DisplayScatterPlot((Tensor X, Tensor y) data)
+{
+    var (X, y) = data;
+
+    // Extract data for plotting
+    var x1 = X.index_select(1, torch.tensor(0)).data<float>().ToArray().Select(f => (double)f).ToArray();
+    var x2 = X.index_select(1, torch.tensor(1)).data<float>().ToArray().Select(f => (double)f).ToArray();
+    var labels = y.data<float>().ToArray();
+
+    // Create a new ScottPlot plot
+    var plt = new ScottPlot.Plot(600, 400);
+
+    // Separate data by label
+    var x1Label0 = x1.Where((_, i) => labels[i] == 0).ToArray();
+    var x2Label0 = x2.Where((_, i) => labels[i] == 0).ToArray();
+    var x1Label1 = x1.Where((_, i) => labels[i] == 1).ToArray();
+    var x2Label1 = x2.Where((_, i) => labels[i] == 1).ToArray();
+
+    // Add scatter plots for each label with lineWidth set to 0
+    plt.AddScatter(x1Label0, x2Label0, color: System.Drawing.Color.Red, lineWidth: 0);
+    plt.AddScatter(x1Label1, x2Label1, color: System.Drawing.Color.Blue, lineWidth: 0);
+
+    // Customize plot
+    plt.Title("Scatter Plot of Circles Dataset");
+    plt.XLabel("X1");
+    plt.YLabel("X2");
+
+    // Render the plot and display it using the DisplayBitmap function
+    var bmp = plt.Render();
+    DisplayBitmap(bmp);
+}
+
+#!markdown
+
+## Function: `TrainTestSplit`
+
+#!markdown
+
+### Signature:
+```csharp
+(Tensor, Tensor, Tensor, Tensor) TrainTestSplit(Tensor X, Tensor y, double testSize = 0.2, int randomState = 42)
+```
+
+### Description:
+Splits the feature tensor `X` and label tensor `y` into training and testing sets, according to the given `testSize` proportion and `randomState` for reproducibility.
+
+### Parameters:
+| Parameter     | Type       | Description                                                                 |
+|---------------|------------|-----------------------------------------------------------------------------|
+| `X`           | `Tensor`   | The feature tensor containing the dataset samples.                           |
+| `y`           | `Tensor`   | The label tensor containing the dataset labels.                              |
+| `testSize`    | `double`   | Proportion of the dataset to include in the test split (default is `0.2`).   |
+| `randomState` | `int`      | Seed for random number generator to ensure reproducibility (default is `42`).|
+
+### Returns:
+| Return Values    | Type       | Description                                                              |
+|------------------|------------|--------------------------------------------------------------------------|
+| `X_train`        | `Tensor`   | The feature tensor for the training set.                                 |
+| `X_test`         | `Tensor`   | The feature tensor for the testing set.                                  |
+| `y_train`        | `Tensor`   | The label tensor for the training set.                                   |
+| `y_test`         | `Tensor`   | The label tensor for the testing set.  
+
+#!csharp
+
+(Tensor, Tensor, Tensor, Tensor) TrainTestSplit(Tensor X, Tensor y, double testSize = 0.2, int randomState = 42)
+{
+    var rand = new Random(randomState);
+    var indices = Enumerable.Range(0, (int)X.shape[0]).OrderBy(x => rand.Next()).ToArray();
+    int testCount = (int)(X.shape[0] * testSize);
+    int trainCount = (int)X.shape[0] - testCount;
+
+    var trainIndices = indices.Take(trainCount).ToArray();
+    var testIndices = indices.Skip(trainCount).Take(testCount).ToArray();
+
+    var X_train = X.index_select(0, torch.tensor(trainIndices));
+    var X_test = X.index_select(0, torch.tensor(testIndices));
+    var y_train = y.index_select(0, torch.tensor(trainIndices));
+    var y_test = y.index_select(0, torch.tensor(testIndices));
+
+    return (X_train, X_test, y_train, y_test);
+}
+
+#!markdown
+
+## Function: `DisplayModelDetails`
+
+#!markdown
+
+### Signature:
+```csharp
+public static void DisplayModelDetails(torch.nn.Module<torch.Tensor, torch.Tensor> model)
+```
+
+### Description:
+Displays the structure and details of the given PyTorch model, including its modules (layers), parameters, and buffers.
+
+### Parameters:
+| Parameter | Type                                            | Description                                                 |
+|-----------|-------------------------------------------------|-------------------------------------------------------------|
+| `model`   | `torch.nn.Module<torch.Tensor, torch.Tensor>`   | The PyTorch model whose structure and details will be displayed. |
+
+### Returns:
+This function does not return a value.
+
+#!csharp
+
+public static void DisplayModelDetails(torch.nn.Module<torch.Tensor, torch.Tensor> model)
+{
+    Console.WriteLine("Displaying Model Details...\n");
+
+    // Display model's structure
+    Console.WriteLine("Model Structure:");
+
+    // Iterate over all named modules (layers)
+    foreach (var (name, module) in model.named_modules())
+    {
+        Console.WriteLine($"\nModule: {name}");
+
+        // Iterate over parameters (weights, biases, etc.) in each module
+        foreach (var (paramName, param) in module.named_parameters())
+        {
+            // Get the shape of the parameter
+            var shape = param.shape;
+            string shapeStr = string.Join(", ", shape);
+            Console.WriteLine($"  Parameter: {paramName} - Shape: [{shapeStr}]");
+
+            // Display the parameter's values in a numpy-like format using TorchSharp's built-in method
+            Console.WriteLine($"  Values: {param.ToString(TorchSharp.TensorStringStyle.Numpy)}");
+        }
+    }
+
+    // Optionally, if the model has buffers (like running stats for batch norm), display them too
+    Console.WriteLine("\nModel Buffers:");
+    foreach (var (bufferName, buffer) in model.named_buffers())
+    {
+        var shape = buffer.shape;
+        string shapeStr = string.Join(", ", shape);
+        Console.WriteLine($"Buffer: {bufferName} - Shape: [{shapeStr}]");
+        Console.WriteLine($"  Values: {buffer.ToString(TorchSharp.TensorStringStyle.Numpy)}");
+    }
+
+    Console.WriteLine("\nEnd of Model Details.");
+}
+
+#!markdown
+
+## Class: `Metrics`
+
+#!markdown
+
+### AccuracyFn
+
+#!markdown
+
+#### Signature:
+```csharp
+public static double AccuracyFn(torch.Tensor y_true, torch.Tensor y_pred)
+```
+
+#### Description:
+Calculates the accuracy of a classification model by comparing the true labels (`y_true`) with the predicted labels (`y_pred`).
+
+#### Parameters:
+| Parameter  | Type        | Description                                                |
+|------------|-------------|------------------------------------------------------------|
+| `y_true`   | `torch.Tensor` | The true labels for the dataset.                           |
+| `y_pred`   | `torch.Tensor` | The predicted labels from the model.                       |
+
+#### Returns:
+| Return Value | Type   | Description                                                   |
+|--------------|--------|---------------------------------------------------------------|
+| `acc`        | `double`| The accuracy of the model as a percentage.                    |
+
+#!csharp
+
+public static class Metrics
+{
+    // Calculate accuracy (a classification metric)
+    public static double AccuracyFn(torch.Tensor y_true, torch.Tensor y_pred)
+    {
+        var correct = torch.eq(y_true, y_pred).sum().item<long>(); // torch.eq() calculates where two tensors are equal
+        var acc = (correct / (double)y_pred.shape[0]) * 100;
+        return acc;
+    }
+}
+
+#!markdown
+
+# Data preparation
+
+#!markdown
+
+## Create sample data
+
+#!csharp
+
+int n_samples = 1000;
+var (X, y) = MakeCircles(n_samples, 0.03, 42);
+
+#!csharp
+
+// Print first 5 X features
+Console.WriteLine("First 5 X features:");
+var first5X = X.index_select(0, torch.arange(0, 5));
+Console.WriteLine(first5X.ToString(TorchSharp.TensorStringStyle.CSharp));
+
+#!csharp
+
+// Print first 5 y labels
+Console.WriteLine("\nFirst 5 y labels:");
+var first5y = y.index_select(0, torch.arange(0, 5));
+Console.WriteLine(first5y.ToString(TorchSharp.TensorStringStyle.CSharp));
+
+#!csharp
+
+// Count the number of 0s and 1s in the labels tensor
+var count0 = y.eq(0).sum().ToInt32();
+var count1 = y.eq(1).sum().ToInt32();
+
+Console.WriteLine($"\nNumber of 0s: {count0}");
+Console.WriteLine($"Number of 1s: {count1}");
+
+#!csharp
+
+DisplayDataFrame(CreateDataFrame(X, y), 10);
+
+#!csharp
+
+DisplayScatterPlot((X, y));
+
+#!markdown
+
+## Create train and test splits
+
+#!csharp
+
+// Split the data
+var (X_train, X_test, y_train, y_test) = TrainTestSplit(X, y, 0.2, 42);
+
+#!csharp
+
+// Print the lengths of the splits
+Console.WriteLine($"Length of X_train: {string.Join(", ", X_train.shape)}");
+Console.WriteLine($"Length of X_test: {string.Join(", ", X_test.shape)}");
+Console.WriteLine($"Length of y_train: {string.Join(", ", y_train.shape)}");
+Console.WriteLine($"Length of y_test: {string.Join(", ", y_test.shape)}");
+
+#!markdown
+
+## Building the non-linear model
+
+#!csharp
+
+public class CircleModelV2 : torch.nn.Module<torch.Tensor, torch.Tensor>
+{
+    public CircleModelV2() : base(nameof(CircleModelV2))
+    {
+        Layer1 = torch.nn.Linear(2, 10);
+        Layer2 = torch.nn.Linear(10, 10);
+        Layer3 = torch.nn.Linear(10, 1);
+        Activation = torch.nn.ReLU(); // non-linear activation function
+
+        RegisterComponents();
+    }
+
+    public override Tensor forward(Tensor x)
+    {
+        return Layer3.forward(Activation.forward(Layer2.forward(Activation.forward(Layer1.forward(x)))));
+    }
+
+    private Linear Layer1;
+    private Linear Layer2;
+    private Linear Layer3;
+    private ReLU Activation;
+} 
+
+#!csharp
+
+var model_3 = new CircleModelV2().to(device);
+
+#!csharp
+
+DisplayModelDetails(model_3);
+
+#!markdown
+
+### Description of BCEWithLogitsLoss
+
+**BCEWithLogitsLoss** stands for Binary Cross-Entropy with Logits Loss. It is a loss function commonly used in binary classification tasks. This loss function combines a **Sigmoid** layer and the **Binary Cross-Entropy (BCE)** loss in a single function, making it more numerically stable than applying these operations separately.
+
+### Key Points
+
+- **Sigmoid Activation**: Converts raw prediction scores (logits) into probabilities by squashing the values between 0 and 1.
+- **Binary Cross-Entropy (BCE) Loss**: Measures the difference between the predicted probabilities and the true binary labels. It penalizes incorrect predictions more heavily.
+
+### Formula
+
+For a single sample, the binary cross-entropy loss is calculated as:
+
+$$ \text{Loss} = -[y \log(p) + (1 - y) \log(1 - p)] $$
+
+Where:
+- \( y \) is the true binary label (0 or 1).
+- \( p \) is the predicted probability after applying the Sigmoid function to the logits.
+
+### Usage
+
+- **Binary Classification**: BCEWithLogitsLoss is particularly effective for tasks where each sample belongs to one of two classes.
+- **TorchSharp**: In TorchSharp, BCEWithLogitsLoss can be used to calculate the loss between the predicted logits and the true binary labels.
+
+`Docs:` https://pytorch.org/docs/stable/generated/torch.nn.BCEWithLogitsLoss.html
+
+`Alternative:` https://pytorch.org/docs/stable/generated/torch.nn.BCELoss.html#torch.nn.BCELoss
+
+#!csharp
+
+torch.manual_seed(42);
+
+int epochs = 1000;
+
+var loss_fn = torch.nn.BCEWithLogitsLoss();
+var optimizer = torch.optim.Adam(model_3.parameters(), 0.001);
+
+#!csharp
+
+for (int epoch = 0; epoch < epochs; epoch++)
+{
+    // Set the model to training mode
+    model_3.train();
+
+    // 1. Forward pass
+    var y_logits = model_3.forward(X_train).squeeze();
+    var y_pred = torch.round(torch.sigmoid(y_logits)); // logits -> prediction probabilities -> prediction labels
+
+    // 2. Calculate loss and accuracy
+    var loss = loss_fn.forward(y_logits, y_train);
+    var acc = Metrics.AccuracyFn(y_train, y_pred);
+
+    // 3. Optimizer zero grad
+    optimizer.zero_grad();
+
+    // 4. Loss backward
+    loss.backward();
+
+    // 5. Optimizer step
+    optimizer.step();
+
+    // Set the model to evaluation mode
+    model_3.eval();
+    float test_loss = 0;
+    double test_acc = 0;
+    using (torch.no_grad())
+    {
+        // 1. Forward pass
+        var test_logits = model_3.forward(X_test).squeeze();
+        var test_pred = torch.round(torch.sigmoid(test_logits)); // logits -> prediction probabilities -> prediction labels
+
+        // 2. Calculate loss and accuracy
+        test_loss = loss_fn.forward(test_logits, y_test).item<float>();
+        test_acc = Metrics.AccuracyFn(y_test, test_pred);
+    }
+
+    // Print out what's happening
+    if (epoch % 100 == 0)
+    {
+        Console.WriteLine($"Epoch: {epoch} | Loss: {loss.item<float>():F5}, Accuracy: {acc:F2}% | Test Loss: {test_loss:F5}, Test Accuracy: {test_acc:F2}%");
+    }
+}
+    
+
+#!markdown
+
+![alt text](../assets/image_non_linear.png)
+
+#!markdown
+
+# Activation Functions
+
+#!markdown
+
+## ReLU
+
+#!markdown
+
+The **ReLU (Rectified Linear Unit)** is a simple activation function used in neural networks. Its job is to decide whether a neuron should be activated or not. The ReLU function checks the input, and if the input is positive, it lets the value pass through unchanged. If the input is negative or zero, it turns it into zero.
+
+In mathematical terms, it's written as:
+
+$$ f(x) = \max(0, x) $$
+
+This means ReLU outputs the input if it's greater than 0, otherwise, it outputs 0. It's widely used because it's easy to compute and helps models learn faster.
+
+`Docs:` https://pytorch.org/docs/stable/generated/torch.nn.ReLU.html#torch.nn.ReLU
+
+#!csharp
+
+// Create a toy tensor (similar to the data going into our model(s))
+var A = torch.arange(-10, 10, 1, torch.float32);
+
+#!csharp
+
+// Visualize the toy tensor
+var plt = new ScottPlot.Plot(600, 400);
+plt.AddSignal(A.to(torch.float64).data<double>().ToArray());
+plt.Title("Toy Tensor Visualization");
+
+// Display the bitmap directly
+DisplayBitmap(plt.GetBitmap());
+
+#!csharp
+
+// Create ReLU function by hand 
+Func<torch.Tensor, torch.Tensor> relu = x => torch.maximum(torch.tensor(0.0f), x);
+
+#!csharp
+
+// Pass toy tensor through ReLU function
+var result = relu(A);
+
+// Visualize the result tensor
+var plt2 = new ScottPlot.Plot(600, 400);
+plt2.AddSignal(result.to(torch.float64).data<double>().ToArray());
+plt2.Title("ReLU Applied Tensor Visualization");
+
+// Display the bitmap directly
+DisplayBitmap(plt2.GetBitmap());
+
+#!markdown
+
+## Leaky ReLU
+
+#!markdown
+
+The **Leaky ReLU** is a variation of the ReLU activation function used in neural networks. Unlike the standard ReLU, which turns negative inputs into 0, Leaky ReLU allows a small, non-zero output for negative inputs, which helps prevent the "dying ReLU" problem where neurons can sometimes get stuck and stop learning.
+
+In mathematical terms, the Leaky ReLU function is written as:
+
+$$ f(x) = \begin{cases} 
+x & \text{if } x > 0 \\
+\alpha x & \text{if } x \leq 0 
+\end{cases} $$
+
+Where `α` is a small constant (often set to 0.01) that controls how much "leak" is allowed for negative inputs. This small slope for negative values helps keep the neuron active, even with negative inputs.
+
+
+`Docs:` https://pytorch.org/docs/stable/generated/torch.nn.LeakyReLU.html#torch.nn.LeakyReLU
+
+#!csharp
+
+// Create a toy tensor (similar to the data going into our model(s))
+var B = torch.arange(-10, 10, 1, torch.float32);
+
+#!csharp
+
+// Visualize the toy tensor
+var plt = new ScottPlot.Plot(600, 400);
+plt.AddSignal(B.to(torch.float64).data<double>().ToArray());
+plt.Title("Toy Tensor Visualization");
+
+// Display the bitmap directly
+DisplayBitmap(plt.GetBitmap());
+
+#!csharp
+
+// Create a custom Leaky ReLU function
+Func<torch.Tensor, torch.Tensor> leakyRelu = x =>
+{
+    var result = torch.empty_like(x);
+    for (int i = 0; i < x.shape[0]; i++)
+    {
+        double value = x[i].ToDouble();
+        result[i] = value > 0 ? value : 0.01 * value;
+    }
+    return result;
+};
+
+#!csharp
+
+// Pass toy tensor through Leaky ReLU function
+var result = leakyRelu(B);
+
+// Visualize the result tensor
+var plt2 = new ScottPlot.Plot(600, 400);
+plt2.AddSignal(result.to(torch.float64).data<double>().ToArray());
+plt2.Title("ReLU Applied Tensor Visualization");
+
+// Display the bitmap directly
+DisplayBitmap(plt2.GetBitmap());
+
+#!markdown
+
+## Sigmoid
+
+#!markdown
+
+The **Sigmoid** function is another activation function used in neural networks. It takes any input and transforms it into a value between 0 and 1, which makes it especially useful for binary classification tasks where the output needs to represent a probability.
+
+In mathematical terms, the Sigmoid function is written as:
+
+$$ f(x) = \frac{1}{1 + e^{-x}} $$
+
+This means that for very large positive inputs, the output will be close to 1, and for very large negative inputs, the output will be close to 0. Sigmoid "squashes" the input into a small range, making it suitable for situations where a probability is needed.
+
+`Docs:` https://pytorch.org/docs/stable/generated/torch.nn.Sigmoid.html#torch.nn.Sigmoid
+
+#!csharp
+
+// Create a toy tensor (similar to the data going into our model(s))
+var C = torch.arange(-10, 10, 1, torch.float32);
+
+#!csharp
+
+// Visualize the toy tensor
+var plt = new ScottPlot.Plot(600, 400);
+plt.AddSignal(C.to(torch.float64).data<double>().ToArray());
+plt.Title("Toy Tensor Visualization");
+
+// Display the bitmap directly
+DisplayBitmap(plt.GetBitmap());
+
+#!csharp
+
+// Create a custom sigmoid function
+Func<torch.Tensor, torch.Tensor> sigmoid = x => 1 / (1 + torch.exp(-x));
+
+#!csharp
+
+// Pass toy tensor through sigmoid function
+var result = sigmoid(C);
+
+// Visualize the result tensor
+var plt2 = new ScottPlot.Plot(600, 400);
+plt2.AddSignal(result.to(torch.float64).data<double>().ToArray());
+plt2.Title("ReLU Applied Tensor Visualization");
+
+// Display the bitmap directly
+DisplayBitmap(plt2.GetBitmap());
+
+#!markdown
+
+## Hyperbolic Tangent (Tanh)
+
+#!markdown
+
+The **Tanh (Hyperbolic Tangent)** function is an activation function used in neural networks. It transforms inputs into values between -1 and 1, making it useful when you need outputs with both positive and negative values.
+
+In mathematical terms, the Tanh function is written as:
+
+$$ f(x) = \tanh(x) = \frac{e^x - e^{-x}}{e^x + e^{-x}} $$
+
+This function outputs values close to 1 for large positive inputs and values close to -1 for large negative inputs. Unlike the Sigmoid function, which outputs values between 0 and 1, Tanh is centered around zero, making it helpful for tasks where the sign of the output is important.
+
+`Docs:` https://pytorch.org/docs/stable/generated/torch.nn.Tanh.html#torch.nn.Tanh
+
+#!csharp
+
+// Create a toy tensor (similar to the data going into our model(s))
+var D = torch.arange(-10, 10, 1, torch.float32);
+
+#!csharp
+
+// Visualize the toy tensor
+var plt = new ScottPlot.Plot(600, 400);
+plt.AddSignal(D.to(torch.float64).data<double>().ToArray());
+plt.Title("Toy Tensor Visualization");
+
+// Display the bitmap directly
+DisplayBitmap(plt.GetBitmap());
+
+#!csharp
+
+// Create a custom tanh function
+Func<torch.Tensor, torch.Tensor> tanh = x =>
+{
+    var result = torch.empty_like(x);
+    for (int i = 0; i < x.shape[0]; i++)
+    {
+        double value = x[i].ToDouble();
+        double expX = Math.Exp(value);
+        double expNegX = Math.Exp(-value);
+        result[i] = (expX - expNegX) / (expX + expNegX);
+    }
+    return result;
+};
+
+#!csharp
+
+// Pass toy tensor through tanh function
+var result = tanh(D);
+
+// Visualize the result tensor
+var plt2 = new ScottPlot.Plot(600, 400);
+plt2.AddSignal(result.to(torch.float64).data<double>().ToArray());
+plt2.Title("ReLU Applied Tensor Visualization");
+
+// Display the bitmap directly
+DisplayBitmap(plt2.GetBitmap());

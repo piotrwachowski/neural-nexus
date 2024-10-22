@@ -1,0 +1,363 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+
+#!csharp
+
+#i "nuget: https://api.nuget.org/v3/index.json"
+#r "nuget: TorchSharp-cpu, 0.102.6"
+#r "nuget: libtorch-cpu-win-x64, 2.2.1.1"
+#r "nuget: ScottPlot, 4.1.36"
+#r "nuget: System.Drawing.Common"
+#r "nuget: Microsoft.Data.Analysis"
+#r "nuget: NumSharp"
+
+#!csharp
+
+using TorchSharp;
+using TorchSharp.Modules;
+using static TorchSharp.torch;
+using static TorchSharp.TensorExtensionMethods;
+
+using System;
+using ScottPlot;
+using NumSharp;
+using System.Drawing;
+using System.IO;
+using Microsoft.Data.Analysis;
+using Microsoft.DotNet.Interactive.Formatting;
+
+#!csharp
+
+Console.WriteLine($"TorchSharp version: {torch.__version__}");
+Console.WriteLine($"CLR version: {System.Environment.Version}");
+Console.WriteLine($"CUDA available: {torch.cuda.is_available()}");
+Console.WriteLine($"GPU count: {torch.cuda.device_count()}");
+
+// Set the default tensor string style to C#.
+torch.TensorStringStyle = torch.csharp;
+
+// Set the device to CUDA if available, otherwise CPU.
+static var device = torch.cuda.is_available() ? torch.CUDA : torch.CPU;
+
+Console.WriteLine($"Device: {device}, Style: {torch.TensorStringStyle}");
+
+#!csharp
+
+using System;
+using System.Linq;
+
+void DisplayBitmap(System.Drawing.Bitmap bitmap)
+{
+    // Convert the Bitmap to a base64 string
+    string base64String;
+    using (MemoryStream ms = new MemoryStream())
+    {
+        bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+        byte[] imgBytes = ms.ToArray();
+        base64String = Convert.ToBase64String(imgBytes);
+    }
+
+    // Display the image using HTML
+    string html = $"<img src='data:image/png;base64,{base64String}' />";
+    Microsoft.DotNet.Interactive.Formatting.Formatter.Register<string>((content, writer) =>
+    {
+        writer.Write(content);
+    }, "text/html");
+
+    html.DisplayAs("text/html");
+}
+
+void DisplayScatterPlotMultiClass((Tensor X, Tensor y) data)
+{
+    var (X, y) = data;
+
+    // Extract data for plotting
+    var x1 = X.index_select(1, torch.tensor(0)).data<float>().ToArray().Select(f => (double)f).ToArray();
+    var x2 = X.index_select(1, torch.tensor(1)).data<float>().ToArray().Select(f => (double)f).ToArray();
+    var labels = y.data<float>().ToArray();  // Use long for class labels
+
+    // Create a new ScottPlot plot
+    var plt = new ScottPlot.Plot(600, 400);
+
+    // Define colors for different classes (expand this array if you have more classes)
+    var colors = new System.Drawing.Color[] { System.Drawing.Color.Red, System.Drawing.Color.Blue, System.Drawing.Color.Green, System.Drawing.Color.Purple };
+
+    // Get the number of unique classes from the label tensor
+    int numClasses = labels.Distinct().Count();
+
+    // Loop over each class and plot its data points in a different color
+    for (int i = 0; i < numClasses; i++)
+    {
+        // Extract indices for the current class
+        var classIndices = labels.Select((value, index) => new { value, index })
+                                 .Where(x => x.value == i)
+                                 .Select(x => x.index)
+                                 .ToArray();
+
+        // Extract the data points corresponding to the current class
+        var class_x1 = classIndices.Select(index => x1[index]).ToArray();
+        var class_x2 = classIndices.Select(index => x2[index]).ToArray();
+
+        // Plot the data points for the current class
+        plt.AddScatter(class_x1, class_x2, color: colors[i % colors.Length], markerSize: 5, lineWidth: 0);
+    }
+
+    // Customize plot
+    plt.Title("Scatter Plot of Dataset with Multiple Classes");
+    plt.XLabel("X1");
+    plt.YLabel("X2");
+
+    // Render the plot and display it using the DisplayBitmap function
+    var bmp = plt.Render();
+    DisplayBitmap(bmp);
+}
+
+
+
+(Tensor, Tensor) MakeSpiral(int n_samples_per_class, double noise, int random_state)
+{
+    var rnd = new Random(random_state);
+    
+    int n_classes = 4;  // Fixed to 4 classes
+    int total_samples = n_samples_per_class * n_classes;
+    
+    // Initialize data matrices
+    var X = torch.zeros(new long[] { total_samples, 2 }, dtype: torch.float32);
+    var y = torch.zeros(new long[] { total_samples }, dtype: torch.float32);
+    
+    for (int j = 0; j < n_classes; j++)
+    {
+        var ix = Enumerable.Range(n_samples_per_class * j, n_samples_per_class).ToArray();
+        
+        // Generate radius from 0 to 1 for each class
+        var r = torch.linspace(0.0, 1.0, n_samples_per_class).data<float>().ToArray();
+        
+        // Generate theta with some noise and spiral effect
+        var t = torch.linspace(j * 4.0, (j + 1) * 4.0, n_samples_per_class).data<float>().ToArray();
+        for (int i = 0; i < n_samples_per_class; i++)
+        {
+            t[i] += (float)(rnd.NextDouble() * noise);  // Adding noise to theta
+        }
+        
+        // Fill the data for this class
+        for (int i = 0; i < ix.Length; i++)
+        {
+            X[ix[i], 0] = (float)(r[i] * Math.Sin(t[i]));  // X1 coordinate
+            X[ix[i], 1] = (float)(r[i] * Math.Cos(t[i]));  // X2 coordinate
+            y[ix[i]] = j;  // Label for the current class
+        }
+    }
+
+    // Shuffle the dataset to mix points from different classes
+    var indices = Enumerable.Range(0, total_samples).OrderBy(_ => rnd.Next()).ToArray();
+    var X_shuffled = torch.zeros_like(X);
+    var y_shuffled = torch.zeros_like(y);
+
+    for (int i = 0; i < total_samples; i++)
+    {
+        X_shuffled[i] = X[indices[i]];
+        y_shuffled[i] = y[indices[i]];
+    }
+
+    return (X_shuffled, y_shuffled);
+}
+
+#!markdown
+
+# TorchSharp Multiclass Classification Exercises
+
+#!markdown
+
+## 1. Create a dataset using MakeSprials function
+
+#!csharp
+
+// Create X and y datasets with 100 samples per class and noise level of 0.1
+var (X, y) = MakeSpiral(n_samples_per_class: 100, noise: 0.1, random_state: 0);
+
+// Display the scatter plot of the dataset
+DisplayScatterPlotMultiClass((X, y));
+
+#!markdown
+
+## 2. Prepare train and test splits
+
+#!csharp
+
+// Create X_Train, X_Test, y_train, y_test tensors with ratio 80:20
+
+(Tensor, Tensor, Tensor, Tensor) TrainTestSplit(Tensor X, Tensor y, double testSize = 0.2, int randomState = 42)
+{
+    var rand = new Random(randomState);
+    var indices = Enumerable.Range(0, (int)X.shape[0]).OrderBy(x => rand.Next()).ToArray();
+    int testCount = (int)(X.shape[0] * testSize);
+    int trainCount = (int)X.shape[0] - testCount;
+
+    var trainIndices = indices.Take(trainCount).ToArray();
+    var testIndices = indices.Skip(trainCount).Take(testCount).ToArray();
+
+    var X_train = X.index_select(0, torch.tensor(trainIndices));
+    var X_test = X.index_select(0, torch.tensor(testIndices));
+    var y_train = y.index_select(0, torch.tensor(trainIndices));
+    var y_test = y.index_select(0, torch.tensor(testIndices));
+
+    return (X_train, X_test, y_train, y_test);
+}
+
+var (X_train, X_test, y_train, y_test) = TrainTestSplit(X, y, 0.2, 42);
+
+// Print the lengths of the splits
+Console.WriteLine($"Length of X_train: {string.Join(", ", X_train.shape)}");
+Console.WriteLine($"Length of X_test: {string.Join(", ", X_test.shape)}");
+Console.WriteLine($"Length of y_train: {string.Join(", ", y_train.shape)}");
+Console.WriteLine($"Length of y_test: {string.Join(", ", y_test.shape)}");
+
+#!markdown
+
+## 3. Define model that can fit the input data
+
+#!csharp
+
+// define model - do we need any non-linear activation function?
+
+class SpiralModel : torch.nn.Module<torch.Tensor, torch.Tensor>
+{
+    private Linear linear1;
+    private Linear linear2;
+    private Linear linear3;
+    private ReLU relu;
+
+    public SpiralModel() : base("SpiralModel")
+    {
+        linear1 = torch.nn.Linear(2, 10);
+        linear2 = torch.nn.Linear(10, 10);
+        linear3 = torch.nn.Linear(10, 4);
+        relu = torch.nn.ReLU();
+        RegisterComponents();
+    }
+
+    public override Tensor forward(Tensor x)
+    {
+        x = relu.forward(linear1.forward(x));
+        x = relu.forward(linear2.forward(x));
+        x = linear3.forward(x);
+        return x;
+    }
+}
+
+#!markdown
+
+## 4. Create training loop
+
+#!csharp
+
+var model_1 = new SpiralModel().to(device);
+
+// Print model parameters
+model_1.state_dict().ToList().ForEach(p => {
+        Console.WriteLine($"Key: {p.Key} | Value: {p.Value.data<float>()[0]} | Requires grad: {p.Value.requires_grad} | {p.Value}");
+    }
+);
+
+#!csharp
+
+// # Setup loss function and optimizer
+var loss_fn = torch.nn.CrossEntropyLoss();
+var optimizer = torch.optim.Adam(model_1.parameters(), 0.01);
+
+#!csharp
+
+// Define accuracy function
+Func<Tensor, Tensor, float> accuracy_fn = (y_true, y_pred) =>
+{
+    var correct = torch.eq(y_true, y_pred).sum().item<long>();
+    return (correct / (float)y_true.shape[0]) * 100.0f;
+};
+
+#!csharp
+
+// Build train loop for the model
+
+// Define the number of epochs
+int epochs = 1000;
+
+// Send data to the device
+X_train = X_train.to(device);
+y_train = y_train.to(device).to_type(ScalarType.Int64); // Ensure target tensor is of type Long
+X_test = X_test.to(device);
+y_test = y_test.to(device).to_type(ScalarType.Int64); // Ensure target tensor is of type Long
+
+// Verify the number of classes
+int num_classes = 4; // Update this based on your dataset
+
+// Loop over data
+for (int epoch = 0; epoch < epochs; epoch++)
+{
+    // Training
+    model_1.train();
+
+    // 1. Forward pass
+    var y_logits = model_1.forward(X_train);
+    var y_pred = torch.softmax(y_logits, 1).argmax(1);
+
+    // 2. Calculate the loss
+    var loss = loss_fn.forward(y_logits, y_train);
+    var acc = accuracy_fn(y_pred, y_train);
+
+    // 3. Optimizer zero grad
+    optimizer.zero_grad();
+
+    // 4. Loss backwards
+    loss.backward();
+
+    // 5. Optimizer step
+    optimizer.step();
+
+    // Testing
+    model_1.eval();
+    using (var noGrad = torch.no_grad())
+    {
+        // 1. Forward pass
+        var test_logits = model_1.forward(X_test);
+        var test_pred = torch.softmax(test_logits, 1).argmax(1);
+
+        // 2. Calculate loss and acc
+        var test_loss = loss_fn.forward(test_logits, y_test);
+        var test_acc = accuracy_fn(test_pred, y_test);
+
+        // Print out what's happening
+        if (epoch % 100 == 0)
+        {
+            Console.WriteLine($"Epoch: {epoch} | Loss: {loss.item<float>():F2} Acc: {acc:F2} | Test loss: {test_loss.item<float>():F2} Test acc: {test_acc:F2}");
+        }
+    }
+}
+
+#!csharp
+
+// Make Test predictions and calculate accuracy
+
+// Put model in evaluation mode
+model_1.eval();
+
+// Disable gradient calculation
+using (var noGrad = torch.no_grad())
+{
+    // Make predictions with the model
+    var y_preds = model_1.forward(X_test);
+    var y_pred_probs = torch.softmax(y_preds, 1).argmax(1);
+
+    // Convert y_pred_probs to float
+    var y_pred_probs_float = y_pred_probs.to_type(ScalarType.Float32);
+
+    // Ensure X_test is of type float
+    var X_test_float = X_test.to_type(ScalarType.Float32);
+
+    // calculate accuracy
+    var accuracy = accuracy_fn(y_pred_probs, y_test);
+    Console.WriteLine($"Accuracy: {accuracy:F2}");
+
+    // Display scatter plot for multi-class classification
+    DisplayScatterPlotMultiClass((X_test_float.cpu(), y_pred_probs_float.cpu()));
+}

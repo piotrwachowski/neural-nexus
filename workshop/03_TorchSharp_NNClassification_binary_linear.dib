@@ -1,0 +1,1167 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+
+#!markdown
+
+# Classification
+
+**Classification** is a fundamental task in machine learning, where the goal is to predict which category or class a given input belongs to. It involves taking a set of inputs and determining which predefined class they best match. Classification problems are common in many real-world applications, such as determining whether an email is spam or not, diagnosing diseases from medical data, or recognizing objects in images.
+
+### Types of Classification
+
+There are different types of classification tasks depending on the nature of the problem:
+
+- **Binary Classification**: In this case, there are only two possible classes. For example, predicting whether a patient has a disease (yes or no).
+  
+  Mathematically, binary classification predicts a label $$ y \in \{0, 1\} $$ given an input vector $$ \mathbf{x} $$ where 0 and 1 represent the two possible classes. For example:
+
+  $$ \hat{y} = \begin{cases} 
+  1 & \text{if } f(\mathbf{x}) \geq 0.5 \\
+  0 & \text{if } f(\mathbf{x}) < 0.5
+  \end{cases} $$
+
+Here, $$ f(\mathbf{x}) $$ is the model's prediction, typically a probability score between 0 and 1.
+
+- **Multi-class Classification**: The target can belong to one of more than two categories. An example of this is identifying whether an image contains a dog, a cat, or a car.
+
+- **Multi-label Classification**: In multi-label classification, each input can be assigned to multiple categories. For example, classifying a news article as belonging to the categories "politics," "technology," and "science" simultaneously.
+
+### How Does Classification Work?
+
+In classification, a model (often called a **classifier**) learns from labeled training data, where each input has an associated label (its correct class). The classifier uses this information to learn patterns and relationships between the input features and the target class. The features could be any measurable characteristics, such as a person’s age, blood pressure, or the pixels in an image.
+
+The model's task is to take new, unseen data and predict its class based on the patterns it has learned during training. The result can either be a direct prediction (e.g., "spam" or "not spam") or a probability score indicating how likely the input belongs to a particular class.
+
+### Applications of Classification
+
+Classification is widely used in various fields, such as:
+
+- **Medical Diagnosis**: Predicting whether a patient has a certain disease based on their medical history and test results.
+  
+- **Image Recognition**: Classifying images into different categories, such as animals, vehicles, or people.
+  
+- **Natural Language Processing (NLP)**: Classifying emails as spam or not, categorizing news articles, or sentiment analysis.
+
+### Key Points
+
+- **Training Data**: The classifier learns from labeled examples during training, where each input has a known class.
+  
+- **Features**: Input data is broken down into measurable features (e.g., height, age, pixel values) that the classifier uses to make predictions.
+  
+- **Classes**: The possible categories the classifier can predict.
+
+#!markdown
+
+# Environment Setup
+
+#!csharp
+
+#i "nuget: https://api.nuget.org/v3/index.json"
+#r "nuget: TorchSharp-cpu, 0.102.6"
+#r "nuget: libtorch-cpu-win-x64, 2.2.1.1"
+#r "nuget: ScottPlot, 4.1.36"
+#r "nuget: System.Drawing.Common"
+#r "nuget: Microsoft.Data.Analysis"
+#r "nuget: NumSharp"
+
+#!csharp
+
+using TorchSharp;
+using TorchSharp.Modules;
+using static TorchSharp.torch;
+using static TorchSharp.TensorExtensionMethods;
+
+#!csharp
+
+using System;
+using ScottPlot;
+using NumSharp;
+using System.Drawing;
+using System.IO;
+using Microsoft.Data.Analysis;
+using Microsoft.DotNet.Interactive.Formatting;
+
+#!csharp
+
+Console.WriteLine($"TorchSharp version: {torch.__version__}");
+Console.WriteLine($"CLR version: {System.Environment.Version}");
+Console.WriteLine($"CUDA available: {torch.cuda.is_available()}");
+Console.WriteLine($"GPU count: {torch.cuda.device_count()}");
+
+// Set the default tensor string style to C#.
+torch.TensorStringStyle = torch.csharp;
+
+// Set the device to CUDA if available, otherwise CPU.
+static var device = torch.cuda.is_available() ? torch.CUDA : torch.CPU;
+
+Console.WriteLine($"Device: {device}, Style: {torch.TensorStringStyle}");
+
+#!csharp
+
+// Make device agnostic code
+var device = torch.cuda.is_available() ? torch.CUDA : torch.CPU;
+Console.WriteLine(device);
+
+#!markdown
+
+# Helper Functions
+
+#!markdown
+
+## Function: `MakeCircles`
+
+#!markdown
+
+### Signature:
+```csharp
+(Tensor, Tensor) MakeCircles(int n_samples, double noise, int random_state)
+```
+
+### Description:
+Generates a dataset of circles with specified parameters.
+
+### Parameters:
+| Parameter      | Type     | Description                                           |
+|----------------|----------|-------------------------------------------------------|
+| `n_samples`    | `int`    | Number of samples to generate                         |
+| `noise`        | `double` | Standard deviation of Gaussian noise added to the data|
+| `random_state` | `int`    | Seed for random number generator                      |
+
+### Returns:
+A tuple containing two tensors: `X` (features) and `y` (labels).
+
+#!csharp
+
+(Tensor, Tensor) MakeCircles(int n_samples, double noise, int random_state)
+{
+    var rnd = new Random(random_state);
+    var X = torch.zeros(new long[] { n_samples, 2 }, dtype: torch.float32);
+    var y = torch.zeros(new long[] { n_samples }, dtype: torch.float32);
+
+    for (int i = 0; i < n_samples; i++)
+    {
+        double angle = 2 * Math.PI * rnd.NextDouble();
+        double radius = (i < n_samples / 2) ? 1.0 : 0.5;
+        radius += noise * rnd.NextDouble();
+
+        X[i, 0] = (float)(radius * Math.Cos(angle));
+        X[i, 1] = (float)(radius * Math.Sin(angle));
+        y[i] = (i < n_samples / 2) ? 0 : 1;
+    }
+
+    // Shuffle the dataset
+    var indices = Enumerable.Range(0, n_samples).OrderBy(_ => rnd.Next()).ToArray();
+    var X_shuffled = torch.zeros_like(X);
+    var y_shuffled = torch.zeros_like(y);
+
+    for (int i = 0; i < n_samples; i++)
+    {
+        X_shuffled[i] = X[indices[i]];
+        y_shuffled[i] = y[indices[i]];
+    }
+
+    return (X_shuffled, y_shuffled);
+}
+
+#!markdown
+
+## Function: `CreateDataFrame`
+
+#!markdown
+
+### Signature:
+```csharp
+DataFrame CreateDataFrame(Tensor X, Tensor y)
+```
+
+### Description:
+Creates a DataFrame from the given tensors `X` and `y`.
+
+### Parameters:
+| Parameter | Type    | Description                     |
+|-----------|---------|---------------------------------|
+| `X`       | `Tensor`| Tensor containing feature data  |
+| `y`       | `Tensor`| Tensor containing label data    |
+
+### Returns:
+A `DataFrame` containing the features and labels.
+
+#!csharp
+
+DataFrame CreateDataFrame(Tensor X, Tensor y)
+{
+    var x1 = X.index_select(1, torch.tensor(0)).data<float>().ToArray();
+    var x2 = X.index_select(1, torch.tensor(1)).data<float>().ToArray();
+    var labels = y.data<float>().ToArray();
+
+    var df = new DataFrame();
+    df.Columns.Add(new PrimitiveDataFrameColumn<float>("X1", x1));
+    df.Columns.Add(new PrimitiveDataFrameColumn<float>("X2", x2));
+    df.Columns.Add(new PrimitiveDataFrameColumn<float>("Label", labels));
+
+    return df;
+}
+
+#!markdown
+
+## Function: `DisplayDataFrame`
+
+#!markdown
+
+### Signature:
+```csharp
+void DisplayDataFrame(DataFrame df)
+```
+
+### Description:
+Displays the given DataFrame in a readable format.
+
+### Parameters:
+| Parameter | Type      | Description                     |
+|-----------|-----------|---------------------------------|
+| `df`      | `DataFrame` | The DataFrame to be displayed   |
+
+### Returns:
+This function does not return a value.
+
+#!csharp
+
+void DisplayDataFrame(DataFrame df, int rows = 10)
+{
+    // Calculate the maximum length of the values in each column
+    var maxColumnLength = df.Columns
+        .SelectMany(c => Enumerable.Range(0, (int)c.Length).Select(i => c[i].ToString().Length).Append(c.Name.Length))
+        .Max();
+
+    // Print the column names with padding
+    var columnNames = string.Join(" | ", df.Columns.Select(c => c.Name.PadRight(maxColumnLength)));
+    Console.WriteLine(columnNames);
+    Console.WriteLine(new string('-', columnNames.Length));
+
+    // Print the rows with padding
+    for (int i = 0; i < Math.Min(rows, df.Rows.Count); i++)
+    {
+        var row = df.Rows[i];
+        var rowValues = string.Join(" | ", row.Select((v, j) => v.ToString().PadRight(maxColumnLength)));
+        Console.WriteLine(rowValues);
+    }
+}
+
+#!markdown
+
+## Function: `DisplayBitmap`
+
+#!markdown
+
+### Signature:
+```csharp
+void DisplayBitmap(System.Drawing.Bitmap bitmap)
+```
+
+### Description:
+Displays the given bitmap image in a readable format.
+
+### Parameters:
+| Parameter | Type                | Description                     |
+|-----------|---------------------|---------------------------------|
+| `bitmap`  | `System.Drawing.Bitmap` | The bitmap image to be displayed |
+
+### Returns:
+This function does not return a value.
+
+#!csharp
+
+void DisplayBitmap(System.Drawing.Bitmap bitmap)
+{
+    // Convert the Bitmap to a base64 string
+    string base64String;
+    using (MemoryStream ms = new MemoryStream())
+    {
+        bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+        byte[] imgBytes = ms.ToArray();
+        base64String = Convert.ToBase64String(imgBytes);
+    }
+
+    // Display the image using HTML
+    string html = $"<img src='data:image/png;base64,{base64String}' />";
+    Microsoft.DotNet.Interactive.Formatting.Formatter.Register<string>((content, writer) =>
+    {
+        writer.Write(content);
+    }, "text/html");
+
+    html.DisplayAs("text/html");
+}
+
+#!markdown
+
+## Function: `DisplayScatterPlot`
+
+#!markdown
+
+### Signature:
+```csharp
+void DisplayScatterPlot((Tensor X, Tensor y) data)
+```
+
+### Description:
+Displays a scatter plot of the given circles dataset using the provided tensors `X` and `y`.
+
+### Parameters:
+| Parameter | Type                | Description                     |
+|-----------|---------------------|---------------------------------|
+| `data`    | `(Tensor X, Tensor y)` | A tuple containing the feature tensor `X` and the label tensor `y` |
+
+### Returns:
+This function does not return a value.
+
+#!csharp
+
+void DisplayScatterPlot((Tensor X, Tensor y) data)
+{
+    var (X, y) = data;
+
+    // Extract data for plotting
+    var x1 = X.index_select(1, torch.tensor(0)).data<float>().ToArray().Select(f => (double)f).ToArray();
+    var x2 = X.index_select(1, torch.tensor(1)).data<float>().ToArray().Select(f => (double)f).ToArray();
+    var labels = y.data<float>().ToArray();
+
+    // Create a new ScottPlot plot
+    var plt = new ScottPlot.Plot(600, 400);
+
+    // Separate data by label
+    var x1Label0 = x1.Where((_, i) => labels[i] == 0).ToArray();
+    var x2Label0 = x2.Where((_, i) => labels[i] == 0).ToArray();
+    var x1Label1 = x1.Where((_, i) => labels[i] == 1).ToArray();
+    var x2Label1 = x2.Where((_, i) => labels[i] == 1).ToArray();
+
+    // Add scatter plots for each label with lineWidth set to 0
+    plt.AddScatter(x1Label0, x2Label0, color: System.Drawing.Color.Red, lineWidth: 0);
+    plt.AddScatter(x1Label1, x2Label1, color: System.Drawing.Color.Blue, lineWidth: 0);
+
+    // Customize plot
+    plt.Title("Scatter Plot of Circles Dataset");
+    plt.XLabel("X1");
+    plt.YLabel("X2");
+
+    // Render the plot and display it using the DisplayBitmap function
+    var bmp = plt.Render();
+    DisplayBitmap(bmp);
+}
+
+#!markdown
+
+## Function: `TrainTestSplit`
+
+#!markdown
+
+### Signature:
+```csharp
+(Tensor, Tensor, Tensor, Tensor) TrainTestSplit(Tensor X, Tensor y, double testSize = 0.2, int randomState = 42)
+```
+
+### Description:
+Splits the feature tensor `X` and label tensor `y` into training and testing sets, according to the given `testSize` proportion and `randomState` for reproducibility.
+
+### Parameters:
+| Parameter     | Type       | Description                                                                 |
+|---------------|------------|-----------------------------------------------------------------------------|
+| `X`           | `Tensor`   | The feature tensor containing the dataset samples.                           |
+| `y`           | `Tensor`   | The label tensor containing the dataset labels.                              |
+| `testSize`    | `double`   | Proportion of the dataset to include in the test split (default is `0.2`).   |
+| `randomState` | `int`      | Seed for random number generator to ensure reproducibility (default is `42`).|
+
+### Returns:
+| Return Values    | Type       | Description                                                              |
+|------------------|------------|--------------------------------------------------------------------------|
+| `X_train`        | `Tensor`   | The feature tensor for the training set.                                 |
+| `X_test`         | `Tensor`   | The feature tensor for the testing set.                                  |
+| `y_train`        | `Tensor`   | The label tensor for the training set.                                   |
+| `y_test`         | `Tensor`   | The label tensor for the testing set.  
+
+#!csharp
+
+(Tensor, Tensor, Tensor, Tensor) TrainTestSplit(Tensor X, Tensor y, double testSize = 0.2, int randomState = 42)
+{
+    var rand = new Random(randomState);
+    var indices = Enumerable.Range(0, (int)X.shape[0]).OrderBy(x => rand.Next()).ToArray();
+    int testCount = (int)(X.shape[0] * testSize);
+    int trainCount = (int)X.shape[0] - testCount;
+
+    var trainIndices = indices.Take(trainCount).ToArray();
+    var testIndices = indices.Skip(trainCount).Take(testCount).ToArray();
+
+    var X_train = X.index_select(0, torch.tensor(trainIndices));
+    var X_test = X.index_select(0, torch.tensor(testIndices));
+    var y_train = y.index_select(0, torch.tensor(trainIndices));
+    var y_test = y.index_select(0, torch.tensor(testIndices));
+
+    return (X_train, X_test, y_train, y_test);
+}
+
+#!markdown
+
+## Function: `DisplayModelDetails`
+
+#!markdown
+
+### Signature:
+```csharp
+public static void DisplayModelDetails(torch.nn.Module<torch.Tensor, torch.Tensor> model)
+```
+
+### Description:
+Displays the structure and details of the given PyTorch model, including its modules (layers), parameters, and buffers.
+
+### Parameters:
+| Parameter | Type                                            | Description                                                 |
+|-----------|-------------------------------------------------|-------------------------------------------------------------|
+| `model`   | `torch.nn.Module<torch.Tensor, torch.Tensor>`   | The PyTorch model whose structure and details will be displayed. |
+
+### Returns:
+This function does not return a value.
+
+#!csharp
+
+public static void DisplayModelDetails(torch.nn.Module<torch.Tensor, torch.Tensor> model)
+{
+    Console.WriteLine("Displaying Model Details...\n");
+
+    // Display model's structure
+    Console.WriteLine("Model Structure:");
+
+    // Iterate over all named modules (layers)
+    foreach (var (name, module) in model.named_modules())
+    {
+        Console.WriteLine($"\nModule: {name}");
+
+        // Iterate over parameters (weights, biases, etc.) in each module
+        foreach (var (paramName, param) in module.named_parameters())
+        {
+            // Get the shape of the parameter
+            var shape = param.shape;
+            string shapeStr = string.Join(", ", shape);
+            Console.WriteLine($"  Parameter: {paramName} - Shape: [{shapeStr}]");
+
+            // Display the parameter's values in a numpy-like format using TorchSharp's built-in method
+            Console.WriteLine($"  Values: {param.ToString(TorchSharp.TensorStringStyle.Numpy)}");
+        }
+    }
+
+    // Optionally, if the model has buffers (like running stats for batch norm), display them too
+    Console.WriteLine("\nModel Buffers:");
+    foreach (var (bufferName, buffer) in model.named_buffers())
+    {
+        var shape = buffer.shape;
+        string shapeStr = string.Join(", ", shape);
+        Console.WriteLine($"Buffer: {bufferName} - Shape: [{shapeStr}]");
+        Console.WriteLine($"  Values: {buffer.ToString(TorchSharp.TensorStringStyle.Numpy)}");
+    }
+
+    Console.WriteLine("\nEnd of Model Details.");
+}
+
+#!markdown
+
+## Function: `VisualizeData`
+
+#!markdown
+
+### Signature:
+```csharp
+public static void VisualizeData(string Title, torch.Tensor XTrain, torch.Tensor YTrain, torch.Tensor XTest, torch.Tensor YTest, torch.Tensor YPred)
+```
+
+### Description:
+Visualizes training data, testing data, and predicted data using a scatter plot. The function uses ScottPlot to create and display the plot with different markers and colors for each dataset.
+
+### Parameters:
+| Parameter  | Type                | Description                                                         |
+|------------|---------------------|---------------------------------------------------------------------|
+| `Title`    | `string`            | The title for the scatter plot.                                     |
+| `XTrain`   | `torch.Tensor`      | The feature tensor for the training data (X-axis values).           |
+| `YTrain`   | `torch.Tensor`      | The label tensor for the training data (Y-axis values).             |
+| `XTest`    | `torch.Tensor`      | The feature tensor for the testing data (X-axis values), optional.  |
+| `YTest`    | `torch.Tensor`      | The label tensor for the testing data (Y-axis values), optional.    |
+| `YPred`    | `torch.Tensor`      | The predicted labels for the test data (Y-axis values), optional.   |
+
+### Returns:
+This function does not return a value, but displays a scatter plot of the training data, test data (if provided), and predicted data (if provided).
+
+#!csharp
+
+void VisualizeData(string Title, torch.Tensor XTrain, torch.Tensor YTrain, torch.Tensor XTest, torch.Tensor YTest, torch.Tensor YPred)
+{
+    double[] dataX = XTrain.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+    double[] dataY = YTrain.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+
+    var plt = new ScottPlot.Plot(600, 400);
+
+    plt.AddScatter(dataX, dataY, markerSize: 5, color: Color.Blue, label: "Train Data");
+
+
+    if (XTest is not null && YTest is not null)
+    {
+        double[] dataXTest = XTest.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+        double[] dataYTest = YTest.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+
+        var TestScatter = plt.AddScatter(dataXTest, dataYTest, markerSize: 5, color: Color.Green, label: "Test Data");
+    }
+
+    if (YPred is not null && XTest is not null)
+    {
+        double[] dataYPred = YPred.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+        double[] dataXTest = XTest.to(torch.ScalarType.Float64).flatten().data<double>().ToArray();
+        var PredScatter = plt.AddScatter(dataXTest, dataYPred, markerSize: 5, color: Color.Red, label: "Pred Data");
+    }
+
+    plt.Title(Title);
+    plt.XLabel("X Axis");
+    plt.YLabel("Y Axis");
+    plt.Grid(true);
+    plt.Legend();
+
+    DisplayBitmap(plt.GetBitmap());
+}
+
+#!markdown
+
+## Class: `Metrics`
+
+#!markdown
+
+### AccuracyFn
+
+#!markdown
+
+#### Signature:
+```csharp
+public static double AccuracyFn(torch.Tensor y_true, torch.Tensor y_pred)
+```
+
+#### Description:
+Calculates the accuracy of a classification model by comparing the true labels (`y_true`) with the predicted labels (`y_pred`).
+
+#### Parameters:
+| Parameter  | Type        | Description                                                |
+|------------|-------------|------------------------------------------------------------|
+| `y_true`   | `torch.Tensor` | The true labels for the dataset.                           |
+| `y_pred`   | `torch.Tensor` | The predicted labels from the model.                       |
+
+#### Returns:
+| Return Value | Type   | Description                                                   |
+|--------------|--------|---------------------------------------------------------------|
+| `acc`        | `double`| The accuracy of the model as a percentage.                    |
+
+#!csharp
+
+public static class Metrics
+{
+    // Calculate accuracy (a classification metric)
+    public static double AccuracyFn(torch.Tensor y_true, torch.Tensor y_pred)
+    {
+        var correct = torch.eq(y_true, y_pred).sum().item<long>(); // torch.eq() calculates where two tensors are equal
+        var acc = (correct / (double)y_pred.shape[0]) * 100;
+        return acc;
+    }
+}
+
+#!markdown
+
+# Data preparation
+
+#!markdown
+
+## Create sample data
+
+#!csharp
+
+int n_samples = 1000;
+var (X, y) = MakeCircles(n_samples, 0.03, 42);
+
+#!csharp
+
+// Print first 5 X features
+Console.WriteLine("First 5 X features:");
+var first5X = X.index_select(0, torch.arange(0, 5));
+Console.WriteLine(first5X.ToString(TorchSharp.TensorStringStyle.CSharp));
+
+#!csharp
+
+// Print first 5 y labels
+Console.WriteLine("\nFirst 5 y labels:");
+var first5y = y.index_select(0, torch.arange(0, 5));
+Console.WriteLine(first5y.ToString(TorchSharp.TensorStringStyle.CSharp));
+
+#!csharp
+
+// Count the number of 0s and 1s in the labels tensor
+var count0 = y.eq(0).sum().ToInt32();
+var count1 = y.eq(1).sum().ToInt32();
+
+Console.WriteLine($"\nNumber of 0s: {count0}");
+Console.WriteLine($"Number of 1s: {count1}");
+
+#!csharp
+
+DisplayDataFrame(CreateDataFrame(X, y), 10);
+
+#!csharp
+
+DisplayScatterPlot((X, y));
+
+#!csharp
+
+// Check the shapes of our features and labels
+Console.WriteLine($"Shapes of X: {string.Join(", ", X.shape)} and y: {string.Join(", ", y.shape)}");
+
+#!csharp
+
+// View the first example of features and labels
+var X_sample = X[0];
+var y_sample = y[0];
+Console.WriteLine($"Values for one sample of X: {X_sample.ToString(TorchSharp.TensorStringStyle.Numpy)} and the same for y: {y_sample.item<float>()}");
+Console.WriteLine($"Shapes for one sample of X: ({string.Join(", ", X_sample.shape)}) and the same for y: ({string.Join(", ", y_sample.shape)})");
+
+#!csharp
+
+y_sample.shape
+
+#!markdown
+
+## Create train and test splits
+
+#!csharp
+
+// Split the data
+var (X_train, X_test, y_train, y_test) = TrainTestSplit(X, y, 0.2, 42);
+
+#!csharp
+
+// Print the lengths of the splits
+Console.WriteLine($"Length of X_train: {string.Join(", ", X_train.shape)}");
+Console.WriteLine($"Length of X_test: {string.Join(", ", X_test.shape)}");
+Console.WriteLine($"Length of y_train: {string.Join(", ", y_train.shape)}");
+Console.WriteLine($"Length of y_test: {string.Join(", ", y_test.shape)}");
+
+#!markdown
+
+## Building the model
+
+#!markdown
+
+Model visualization: Explore and visualize neural network models interactively at https://playground.tensorflow.org
+
+#!csharp
+
+public class CircleModelV0 : torch.nn.Module<torch.Tensor, torch.Tensor>
+{
+    private Linear layer_1;
+    private Linear layer_2;
+
+    public CircleModelV0() : base(nameof(CircleModelV0))
+    {
+        layer_1 = torch.nn.Linear(2, 5); // takes in 2 features (X), produces 5 features
+        layer_2 = torch.nn.Linear(5, 1); // takes in 5 features, produces 1 feature (y)
+
+        RegisterComponents();
+    }
+
+    public override torch.Tensor forward(torch.Tensor x)
+    {
+        // Return the output of layer_2, a single feature, the same shape as y
+        return layer_2.forward(layer_1.forward(x)); // computation goes through layer_1 first then the output of layer_1 goes through layer_2
+    }
+}
+
+#!csharp
+
+var RandomSeed = 42;
+torch.manual_seed(RandomSeed);
+
+var model_0 = new CircleModelV0().to(device);
+
+#!csharp
+
+DisplayModelDetails(model_0);
+
+#!csharp
+
+var RandomSeed = 42;
+torch.manual_seed(RandomSeed);
+
+var model_seq = torch.nn.Sequential(
+    ("layer_1", torch.nn.Linear(2, 5)),
+    ("layer_2", torch.nn.Linear(5, 1))
+).to(device);
+
+#!csharp
+
+DisplayModelDetails(model_seq);
+
+#!csharp
+
+var untrained_preds = model_0.forward(X_test);
+
+#!csharp
+
+// Print the lengths and shapes of the predictions and test samples
+Console.WriteLine($"Length of predictions: {untrained_preds.shape[0]}, Shape: ({string.Join(", ", untrained_preds.shape)})");
+Console.WriteLine($"Length of test samples: {y_test.shape[0]}, Shape: ({string.Join(", ", y_test.shape)})");
+
+// Print the first 10 predictions and test labels
+Console.WriteLine($"\nFirst 10 predictions:\n{untrained_preds.index_select(0, torch.arange(0, 10)).ToString(TorchSharp.TensorStringStyle.Numpy)}");
+Console.WriteLine($"\nFirst 10 test labels:\n{y_test.index_select(0, torch.arange(0, 10)).ToString(TorchSharp.TensorStringStyle.Numpy)}");
+
+#!markdown
+
+It appears that the number of predictions matches the number of test labels, which is a good sign. However, the predictions are not in the same form or shape as the test labels. Specifically, the predictions are in a 2D array format with shape (200, 1), while the test labels are in a 1D array format with shape (200).
+
+This discrepancy in shapes indicates that we need to perform some additional steps to align the predictions with the test labels. We will address this issue in the upcoming sections to ensure that the predictions and test labels are in the same form, making it easier to compare and evaluate the model's performance.
+
+#!csharp
+
+// Create a loss function
+var loss_fn = torch.nn.BCEWithLogitsLoss();
+
+#!csharp
+
+// Create an optimizer
+var optimizer = torch.optim.SGD(model_0.parameters(), 0.1);
+
+#!markdown
+
+### Going from raw model outputs to predicted labels (logits -> prediction probabilities -> prediction labels)
+
+#!markdown
+
+`Logits`
+
+The outputs from the model are essentially random because the model has not been trained yet.
+
+These outputs come from the `forward()` method, which applies two layers of `nn.Linear()`. This operation computes the following equation:
+
+$$ \mathbf{y} = x \cdot \mathbf{Weights}^T + \mathbf{bias} $$
+
+The result of this equation, $\mathbf{y}$, represents the raw outputs of the model, commonly referred to as logits. Logits are the unnormalized predictions from the model before any activation function is applied. They represent the raw score for each class or outcome, but they are not yet converted into probabilities, making them difficult to interpret directly.
+
+When the model receives input data ($x$ in the equation, or `X_test` in the code), it generates logits as its output. However, these raw outputs need to be transformed to make them comparable to the true labels. This is typically done using the sigmoid activation function, which converts the logits into a more interpretable form, such as probabilities.
+
+#!csharp
+
+var y_logits = model_0.forward(X_test.to(device)).index_select(0, torch.arange(0, 5));
+
+#!csharp
+
+Console.WriteLine(y_logits.ToString(TorchSharp.TensorStringStyle.Numpy));
+
+#!markdown
+
+`Prediction Probabilities`
+
+The outputs now show some consistency, even though they are still random. They are presented as prediction probabilities, often referred to as `y_pred_probs`. These probabilities represent the model's confidence in assigning each data point to one class or another.
+
+Since this is a binary classification problem, the target outputs are either 0 or 1. The prediction probabilities can be interpreted as a decision boundary: 
+
+- Values closer to 0 indicate the model believes the sample belongs to class 0.
+- Values closer to 1 suggest the model believes the sample belongs to class 1.
+
+Specifically:
+- If `y_pred_probs >= 0.5`, the model predicts class 1 (`y = 1`).
+- If `y_pred_probs < 0.5`, the model predicts class 0 (`y = 0`).
+
+#!csharp
+
+var y_pred_probs = torch.sigmoid(y_logits);
+
+#!csharp
+
+Console.WriteLine(y_pred_probs.ToString(TorchSharp.TensorStringStyle.Numpy));
+
+#!markdown
+
+`Prediction Labels`
+
+The call of `torch.round(y_pred_probs)` converts the predicted probabilities into binary prediction labels. By rounding the probabilities to the nearest integer, it effectively thresholds the values at 0.5, resulting in labels of 0 or 1. This is commonly used in binary classification tasks to determine the predicted class based on the model's output probabilities.
+
+#!csharp
+
+var y_preds_labels = torch.round(y_pred_probs);
+
+#!csharp
+
+Console.WriteLine(y_preds_labels.ToString(TorchSharp.TensorStringStyle.Numpy));
+
+#!csharp
+
+var y_pred_labels_alt = torch.round(torch.sigmoid(model_0.forward(X_test.to(device))).slice(0, 0, 5, 1));
+
+#!csharp
+
+// Check for equality between predicted labels and rounded prediction probabilities
+Console.WriteLine(torch.eq(y_preds_labels.squeeze(), y_pred_labels_alt.squeeze()).ToString(TorchSharp.TensorStringStyle.Numpy));
+
+#!markdown
+
+## Building a training and testing loop
+
+#!csharp
+
+// Set the manual seed for reproducibility
+torch.manual_seed(42);
+
+// Set the number of epochs
+int epochs = 1000;
+
+#!csharp
+
+// Build training and evaluation loop
+for (int epoch = 0; epoch < epochs; epoch++)
+{
+    // Training
+    model_0.train();
+
+    // 1. Forward pass (model outputs raw logits)
+    var y_logits = model_0.forward(X_train).squeeze(); // squeeze to remove extra `1` dimensions
+    var y_pred = torch.round(torch.sigmoid(y_logits)); // turn logits -> pred probs -> pred labels
+
+    // 2. Calculate loss/accuracy
+    var loss = loss_fn.forward(y_logits, y_train); // Using nn.BCEWithLogitsLoss works with raw logits
+    var acc = Metrics.AccuracyFn(y_train, y_pred);
+
+    // 3. Optimizer zero grad
+    optimizer.zero_grad();
+
+    // 4. Loss backwards
+    loss.backward();
+
+    // 5. Optimizer step
+    optimizer.step();
+
+    // Testing
+    model_0.eval();
+    float test_loss = 0;
+    double test_acc = 0;
+    using (torch.no_grad())
+    {
+        // 1. Forward pass
+        var test_logits = model_0.forward(X_test).squeeze();
+        var test_pred = torch.round(torch.sigmoid(test_logits));
+
+        // 2. Calculate loss/accuracy
+        test_loss = loss_fn.forward(test_logits, y_test).item<float>();
+        test_acc = Metrics.AccuracyFn(y_test, test_pred);
+    }
+
+    // Print out what's happening every 10 epochs
+    if (epoch % 10 == 0)
+    {
+        Console.WriteLine($"Epoch: {epoch} | Loss: {loss.item<float>():F5}, Accuracy: {acc:F2}% | Test loss: {test_loss:F5}, Test acc: {test_acc:F2}%");
+    }
+}
+
+#!markdown
+
+`Summary of Learning Results`
+
+The model successfully completed the training and testing steps, but the performance did not improve significantly. The accuracy remained around 50% on both the training and testing datasets. Given that this is a balanced binary classification problem, the model's performance is equivalent to random guessing. This indicates that the model is not learning effectively from the data, as it achieves the same accuracy as predicting a single class every time.
+
+#!markdown
+
+![alt text](../assets/image.png)
+
+The issue arises because the model is trying to split the red and blue dots using a straight line, which is ineffective for circular data. This underfitting suggests that the model is not capturing the predictive patterns in the data.
+
+The model uses linear layers:
+
+```csharp
+layer_1 = torch.nn.Linear(2, 5); // takes in 2 features (X), produces 5 features
+layer_2 = torch.nn.Linear(5, 1); // takes in 5
+```
+
+Linear layers alone can only learn linear relationships, which are insufficient for capturing the non-linear, circular patterns in the data.
+
+#!markdown
+
+## Improving a model
+
+#!markdown
+
+Improving a machine learning model involves various techniques aimed at enhancing its learning capabilities and overall performance. Here are some key strategies:
+
+`Add More Layers:`
+Increasing the number of layers in a neural network can enhance its ability to learn complex patterns in the data. This process, known as making the network deeper, allows each layer to capture different aspects of the data.
+
+`Add More Hidden Units:`
+Similar to adding more layers, increasing the number of hidden units per layer can improve the model's learning capacity. This approach, referred to as making the network wider, enables each layer to process more information.
+
+`Fitting for Longer (More Epochs):`
+Extending the training duration by increasing the number of epochs can provide the model with more opportunities to learn from the data, potentially leading to better performance.
+
+`Changing the Activation Functions:`
+Using non-linear activation functions can help the model fit data that cannot be separated by straight lines. This is crucial for capturing complex, non-linear relationships in the data.
+
+`Change the Learning Rate:`
+Adjusting the learning rate of the optimizer can significantly impact the model's training process. A higher learning rate may cause the model to overcorrect, while a lower learning rate might result in insufficient learning.
+
+`Change the Loss Function:`
+Different problems require different loss functions. Selecting an appropriate loss function is essential for guiding the model's learning process effectively. For instance, a binary cross-entropy loss function is suitable for binary classification problems but not for multi-class classification.
+
+`Use Transfer Learning:`
+Leveraging a pretrained model from a similar problem domain and fine-tuning it for your specific problem can save time and improve performance. Transfer learning allows you to benefit from the knowledge gained by the pretrained model.
+
+#!markdown
+
+### Model Update
+
+We will make several modifications to enhance the model's learning ability and performance. The key updates include adding an extra layer, increasing the number of hidden units, and extending the training duration. The revised model, **CircleModelV1**, is designed as follows:
+
+- **Epochs:** Increased from 100 to **1000** to give the model more opportunities to learn from the data.
+- **Hidden Units:** The number of hidden units per layer has been increased from **5 to 10**, providing the model with more capacity to capture complex patterns.
+
+The architecture of the updated model now consists of three linear layers:
+
+- **Layer 1:** Takes in 2 features (input features) and outputs **10 features** (previously 5).
+- **Layer 2:** A new layer that takes in **10 features** and outputs **10 features** (previously, this layer did not exist).
+- **Layer 3:** Takes in **10 features** and outputs **1 feature** (same as before).
+
+These changes aim to improve the model's ability to learn complex patterns by making the network wider (more hidden units), deeper (an additional layer), and training it longer (1000 epochs).
+
+#!csharp
+
+public class CircleModelV1 : torch.nn.Module<torch.Tensor, torch.Tensor>
+{
+    private readonly Linear _layer1;
+    private readonly Linear _layer2;
+    private readonly Linear _layer3;
+
+    public CircleModelV1() : base("CircleModelV1")
+    {
+        _layer1 = torch.nn.Linear(2, 10);
+        _layer2 = torch.nn.Linear(10, 10); // extra layer
+        _layer3 = torch.nn.Linear(10, 1);
+        
+        RegisterComponents();
+    }
+
+    public override Tensor forward(Tensor x)
+    {
+        return _layer3.forward(_layer2.forward(_layer1.forward(x)));
+    }
+}
+
+#!csharp
+
+var model_1 = new CircleModelV1().to(device);
+
+#!csharp
+
+DisplayModelDetails(model_1);
+
+#!markdown
+
+### Training and evaluating
+
+#!csharp
+
+// Define epochs
+int epochs = 1000;
+
+// Define the loss function
+var loss_fn = torch.nn.BCEWithLogitsLoss(); // Does not require sigmoid on input
+
+// Define the optimizer
+var optimizer = torch.optim.SGD(model_1.parameters(), 0.1);
+
+#!csharp
+
+torch.manual_seed(42);
+
+for (int epoch = 0; epoch < epochs; epoch++)
+{
+    // Training
+    model_1.train();
+
+    // 1. Forward pass
+    var y_logits = model_1.forward(X_train).squeeze();
+    var y_pred = torch.round(torch.sigmoid(y_logits)); // logits -> prediction probabilities -> prediction labels
+
+    // 2. Calculate loss/accuracy
+    var loss = loss_fn.forward(y_logits, y_train);
+    var acc = Metrics.AccuracyFn(y_train, y_pred);
+
+    // 3. Optimizer zero grad
+    optimizer.zero_grad();
+
+    // 4. Loss backwards
+    loss.backward();
+
+    // 5. Optimizer step
+    optimizer.step();
+
+    // Testing
+    model_1.eval();
+    float test_loss = 0;
+    double test_acc = 0;
+    using (torch.no_grad())
+    {
+        // 1. Forward pass
+        var test_logits = model_1.forward(X_test).squeeze();
+        var test_pred = torch.round(torch.sigmoid(test_logits));
+
+        // 2. Calculate loss/accuracy
+        test_loss = loss_fn.forward(test_logits, y_test).item<float>();
+        test_acc = Metrics.AccuracyFn(y_test, test_pred);
+    }
+
+    // Print out what's happening every 100 epochs
+    if (epoch % 100 == 0)
+    {
+        Console.WriteLine($"Epoch: {epoch} | Loss: {loss.item<float>():F5}, Accuracy: {acc:F2}% | Test loss: {test_loss:F5}, Test acc: {test_acc:F2}%");
+    }
+}
+
+#!markdown
+
+![alt text](../assets/image_1000_epochs.png)
+
+#!markdown
+
+Despite training the model for longer and adding an extra layer, it still shows no significant improvement and performs no better than random guessing. The model is still drawing a straight line between the red and blue dots, suggesting that it may only be capable of modeling linear data rather than learning more complex patterns.
+
+#!markdown
+
+### Preparing data to see if our model can model a straight line
+
+#!markdown
+
+#### Create data
+
+#!csharp
+
+// Create some data (same as notebook 01)
+float weight = 0.7f;
+float bias = 0.3f;
+float start = 0f;
+float end = 0.99f; // Adjusted end value to generate 100 elements
+float step = 0.01f;
+
+// Create data
+var X_regression = torch.arange(start, end, step);
+var y_regression = weight * X_regression + bias; // linear regression formula
+
+// Check the data
+Console.WriteLine(X_regression.shape[0]); // Should print 100
+Console.WriteLine(X_regression.slice(0, 0, 5, 1));
+Console.WriteLine(y_regression.slice(0, 0, 5, 1));
+
+#!markdown
+
+#### Split into train and test sets
+
+#!csharp
+
+// Create train and test splits
+int train_split = (int)(0.8 * X_regression.shape[0]); // 80% of data used for training set
+var X_train_regression = X_regression.slice(0, 0, train_split, 1);
+var y_train_regression = y_regression.slice(0, 0, train_split, 1);
+var X_test_regression = X_regression.slice(0, train_split, X_regression.shape[0], 1);
+var y_test_regression = y_regression.slice(0, train_split, y_regression.shape[0], 1);
+
+// Check the lengths of each split
+Console.WriteLine(X_train_regression.shape[0]);
+Console.WriteLine(y_train_regression.shape[0]);
+Console.WriteLine(X_test_regression.shape[0]);
+Console.WriteLine(y_test_regression.shape[0]);
+
+#!csharp
+
+VisualizeData("Linear Regression", X_train_regression, y_train_regression, X_test_regression, y_test_regression, null);
+
+#!markdown
+
+#### Train model
+
+#!csharp
+
+// Define the model using nn.Sequential
+var model_2 = torch.nn.Sequential(
+    torch.nn.Linear(1, 10),
+    torch.nn.Linear(10, 10),
+    torch.nn.Linear(10, 1)
+).to(device);
+
+#!csharp
+
+DisplayModelDetails(model_2);
+
+#!csharp
+
+// Define the loss function
+var loss_fn = torch.nn.L1Loss();
+
+// Define the optimizer
+var optimizer = torch.optim.SGD(model_2.parameters(), 0.01);
+
+// Define the number of epochs
+int epochs = 120;
+
+#!csharp
+
+// display X_train_regression
+Console.WriteLine(X_train_regression.ToString(TorchSharp.TensorStringStyle.CSharp));
+
+// display y_train_regression
+Console.WriteLine(y_train_regression.ToString(TorchSharp.TensorStringStyle.CSharp));
+
+#!csharp
+
+Tensor y_pred = null;
+Tensor test_pred = null;
+for (int epoch = 0; epoch < epochs; epoch++)
+{
+    model_2.train();
+
+    // 1. Forward pass
+    y_pred = model_2.forward(X_train_regression.unsqueeze(1));
+
+    // 2. Calculate loss (no accuracy since it's a regression problem, not classification)
+    var loss = loss_fn.forward(y_pred, y_train_regression);
+
+    // Debugging: Print loss
+    if (epoch % 100 == 0)
+    {
+        Console.WriteLine($"Epoch: {epoch} | Loss: {loss.item<float>():E}");
+    }
+
+    // 3. Optimizer zero grad
+    optimizer.zero_grad();
+
+    // 4. Loss backwards
+    loss.backward();
+
+    // 5. Optimizer step
+    optimizer.step();
+
+    // Testing
+    float test_loss = 0;
+    using (torch.no_grad())
+    {
+        model_2.eval();
+        
+        // 1. Forward pass
+        test_pred = model_2.forward(X_test_regression.unsqueeze(1));
+
+        // 2. Calculate the loss
+        test_loss = loss_fn.forward(test_pred, y_test_regression).item<float>();
+    }
+
+    // Print out what's happening
+    if (epoch % 100 == 0)
+    {
+        Console.WriteLine($"Epoch: {epoch} | Train loss: {loss.item<float>():F5}, Test loss: {test_loss:F5}");
+    }
+}
+
+        
+VisualizeData("Linear Regression - Test Data", X_train_regression, y_train_regression, X_test_regression, y_test_regression, test_pred);

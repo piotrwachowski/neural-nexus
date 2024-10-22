@@ -1,0 +1,320 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+
+#!csharp
+
+#r "nuget: TorchSharp-cpu, 0.102.6"
+#r "nuget: libtorch-cpu-win-x64, 2.2.1.1"
+
+// Add additional NuGet packages here
+
+#!csharp
+
+// Add neccecary namespaces
+
+#!csharp
+
+// Create device agnostic code
+
+#!csharp
+
+// Helper functions
+
+(Tensor, Tensor) MakeCircles(int n_samples, double noise, int random_state)
+{
+    var rnd = new Random(random_state);
+    var X = torch.zeros(new long[] { n_samples, 2 }, dtype: torch.float32);
+    var y = torch.zeros(new long[] { n_samples }, dtype: torch.float32);
+
+    for (int i = 0; i < n_samples; i++)
+    {
+        double angle = 2 * Math.PI * rnd.NextDouble();
+        double radius = (i < n_samples / 2) ? 1.0 : 0.5;
+        radius += noise * rnd.NextDouble();
+
+        X[i, 0] = (float)(radius * Math.Cos(angle));
+        X[i, 1] = (float)(radius * Math.Sin(angle));
+        y[i] = (i < n_samples / 2) ? 0 : 1;
+    }
+
+    // Shuffle the dataset
+    var indices = Enumerable.Range(0, n_samples).OrderBy(_ => rnd.Next()).ToArray();
+    var X_shuffled = torch.zeros_like(X);
+    var y_shuffled = torch.zeros_like(y);
+
+    for (int i = 0; i < n_samples; i++)
+    {
+        X_shuffled[i] = X[indices[i]];
+        y_shuffled[i] = y[indices[i]];
+    }
+
+    return (X_shuffled, y_shuffled);
+}
+
+void DisplayBitmap(System.Drawing.Bitmap bitmap)
+{
+    // Convert the Bitmap to a base64 string
+    string base64String;
+    using (MemoryStream ms = new MemoryStream())
+    {
+        bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+        byte[] imgBytes = ms.ToArray();
+        base64String = Convert.ToBase64String(imgBytes);
+    }
+
+    // Display the image using HTML
+    string html = $"<img src='data:image/png;base64,{base64String}' />";
+    Microsoft.DotNet.Interactive.Formatting.Formatter.Register<string>((content, writer) =>
+    {
+        writer.Write(content);
+    }, "text/html");
+
+    html.DisplayAs("text/html");
+}
+
+void DisplayScatterPlot((Tensor X, Tensor y) data)
+{
+    var (X, y) = data;
+
+    // Extract data for plotting
+    var x1 = X.index_select(1, torch.tensor(0)).data<float>().ToArray().Select(f => (double)f).ToArray();
+    var x2 = X.index_select(1, torch.tensor(1)).data<float>().ToArray().Select(f => (double)f).ToArray();
+    var labels = y.data<float>().ToArray();
+
+    // Create a new ScottPlot plot
+    var plt = new ScottPlot.Plot(600, 400);
+
+    // Separate data by label
+    var x1Label0 = x1.Where((_, i) => labels[i] == 0).ToArray();
+    var x2Label0 = x2.Where((_, i) => labels[i] == 0).ToArray();
+    var x1Label1 = x1.Where((_, i) => labels[i] == 1).ToArray();
+    var x2Label1 = x2.Where((_, i) => labels[i] == 1).ToArray();
+
+    // Add scatter plots for each label with lineWidth set to 0
+    plt.AddScatter(x1Label0, x2Label0, color: System.Drawing.Color.Red, lineWidth: 0);
+    plt.AddScatter(x1Label1, x2Label1, color: System.Drawing.Color.Blue, lineWidth: 0);
+
+    // Customize plot
+    plt.Title("Scatter Plot of Circles Dataset");
+    plt.XLabel("X1");
+    plt.YLabel("X2");
+
+    // Render the plot and display it using the DisplayBitmap function
+    var bmp = plt.Render();
+    DisplayBitmap(bmp);
+}
+
+#!markdown
+
+# TorchSharp Classification Exercises
+
+#!markdown
+
+## 1. Based on `MakeCircle()` function recreate Scikit-Leanr's `make_moons()` logic in C#
+
+#!markdown
+
+- **Change the Circle Generation Logic**
+  - **Current (Circle logic):** In the `MakeCircles` function, you generate full circles by using a random angle between 0 and 2π and adjusting the radius for each point.
+  - **New (Half-Moon logic):** In `MakeMoons`, each "moon" is represented by a half-circle. The first half-moon is the upper half of a circle (0 to π), and the second half-moon is shifted down and slightly right.
+  - **Update the angle generation:**
+    - For the first half-moon, generate an angle between 0 and π.
+    - For the second half-moon, generate the same but shift the points to the right and down.
+
+- **Remove the Radius Variation**
+  - **Current (Circle logic):** You vary the radius based on the sample index (1.0 for the outer circle, 0.5 for the inner circle).
+  - **New (No radius change):** In `MakeMoons`, there is no radius variation like in circles. Simply generate points based on the angle for both moons without adjusting their distance from the center.
+
+- **Shift Coordinates for the Second Moon**
+  - **Current (Circle logic):** Both classes are centered around the origin, forming concentric circles.
+  - **New (Shift logic):** For the second half-moon, shift the coordinates of the points. The common practice is:
+    - Shift the x-coordinates to the right by 1.
+    - Shift the y-coordinates down by -0.5 to avoid overlap with the first moon.
+
+- **Class Labels**
+  - **Current (Circle logic):** Class 0 for the outer circle and Class 1 for the inner circle.
+  - **New (Moon logic):** Use the same approach, with Class 0 for the first half-moon and Class 1 for the second half-moon.
+
+- **Apply Noise**
+  - **Current (Circle logic):** Noise is added to both x and y based on random values for each point.
+  - **New (Same noise logic):** This can remain unchanged. Apply random noise to both the x and y coordinates of each point for both moons.
+
+
+  **Output data should look like on the following picture:**
+  
+  ![Scatter Plot of Moons](../assets/scatter_plot_moons.png)
+
+**Circle Logic (Before):**
+``` csharp
+for (int i = 0; i < n_samples; i++)
+{
+    double angle = 2 * Math.PI * rnd.NextDouble(); // Full circle
+    double radius = (i < n_samples / 2) ? 1.0 : 0.5; // Outer and inner circles
+    radius += noise * rnd.NextDouble();
+
+    X[i, 0] = (float)(radius * Math.Cos(angle));
+    X[i, 1] = (float)(radius * Math.Sin(angle));
+    y[i] = (i < n_samples / 2) ? 0 : 1; // Class labels
+}
+```
+
+**Moon Logic (After)**
+``` csharp
+for (int i = 0; i < n_samples; i++)
+{
+    double angle;
+
+    if (i < n_samples / 2)
+    {
+        // First half-moon (upper)
+        angle = Math.PI * rnd.NextDouble(); // Half-circle between 0 and π
+        X[i, 0] = (float)(Math.Cos(angle)); // X-coordinate
+        X[i, 1] = (float)(Math.Sin(angle)); // Y-coordinate
+        y[i] = 0; // Class 0
+    }
+    else
+    {
+        // Second half-moon (lower)
+        angle = Math.PI * rnd.NextDouble(); // Half-circle between 0 and π
+        X[i, 0] = (float)(1 - Math.Cos(angle)); // Shifted X-coordinate
+        X[i, 1] = (float)(-Math.Sin(angle) - 0.5); // Shifted Y-coordinate
+        y[i] = 1; // Class 1
+    }
+
+    // Apply noise if any
+    X[i, 0] += (float)(noise * (rnd.NextDouble() - 0.5));
+    X[i, 1] += (float)(noise * (rnd.NextDouble() - 0.5));
+}
+```
+
+#!csharp
+
+// define 
+(Tensor, Tensor) MakeMoons(int n_samples, double noise, int random_state) {
+    
+}
+
+#!csharp
+
+// Visualize the dataset using DisplayScatterPlot function
+
+#!csharp
+
+// Split the data into train and test sets (80% train, 20% test)
+
+#!markdown
+
+## 2. Build a model by subclassing nn.Module that incorporates non-linear activation functions and is capable of fitting the data you created in 1.
+
+#!csharp
+
+// define the model
+
+#!csharp
+
+// Instantiate the model and put it to the target device
+
+#!csharp
+
+// Print model parameters
+
+#!markdown
+
+## 3. Setup a binary classification compatible loss function and optimizer to use when training the model built in 2.
+
+#!csharp
+
+// Setup loss function
+
+// Setup optimizer to optimize model's parameters
+
+#!markdown
+
+## 4. Create a training and testing loop to fit the model you created in 2 to the data you created in 1.
+
+#!csharp
+
+// Training loop
+
+// Train model for 300 epochs
+
+// Send data to target device
+
+for (int epoch = 0; epoch < epochs; epoch++)
+{
+    // Put model in train mode
+
+    // 1. Forward pass
+
+    // 2. Calculate loss
+
+    // 3. Zero gradients
+
+    // 4. Backpropagation
+
+    // 5. Step the optimizer
+
+    // Perform testing every 20 epochs
+    if (epoch % 20 == 0)
+    {
+        // Put model in evaluation mode and setup inference context
+            
+        // 1. Forward pass
+        
+
+        // 2. Calculate test loss
+        
+
+        // Print out what's happening
+        Console.WriteLine($"Epoch: {epoch} | Train loss: {loss.item<float>():F3} | Test loss: {test_loss.item<float>():F3}");
+    }
+}
+
+#!markdown
+
+## 5. **Make predictions with the trained model on the test data.**
+
+- Visualize these predictions against the original training and testing data.
+
+#!csharp
+
+// Make predictions with the model
+
+#!csharp
+
+// Plot the predictions
+
+#!markdown
+
+## 6. **Save your trained model to a file.**
+
+#!csharp
+
+// Save the model to file
+
+#!csharp
+
+// Create new instance of model and load saved model data
+
+#!csharp
+
+// Make predictions with loaded model and compare them to the previous
+
+#!markdown
+
+## 7. Replicate the Tanh (hyperbolic tangent) activation function in pure C#
+
+`Hint:` https://pytorch.org/docs/stable/generated/torch.nn.Tanh.html
+
+#!csharp
+
+// Create a straight line tensor
+
+#!csharp
+
+// Test torch.tanh() on the tensor and plot it
+
+#!csharp
+
+// Replicate torch.tanh() and plot it

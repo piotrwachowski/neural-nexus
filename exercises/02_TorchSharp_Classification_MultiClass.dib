@@ -1,0 +1,197 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+
+#!csharp
+
+#i "nuget: https://api.nuget.org/v3/index.json"
+#r "nuget: TorchSharp-cpu, 0.102.6"
+#r "nuget: libtorch-cpu-win-x64, 2.2.1.1"
+#r "nuget: ScottPlot, 4.1.36"
+#r "nuget: System.Drawing.Common"
+#r "nuget: Microsoft.Data.Analysis"
+#r "nuget: NumSharp"
+
+#!csharp
+
+using TorchSharp;
+using TorchSharp.Modules;
+using static TorchSharp.torch;
+using static TorchSharp.TensorExtensionMethods;
+
+using System;
+using ScottPlot;
+using NumSharp;
+using System.Drawing;
+using System.IO;
+using Microsoft.Data.Analysis;
+using Microsoft.DotNet.Interactive.Formatting;
+
+#!csharp
+
+using System;
+using System.Linq;
+
+void DisplayBitmap(System.Drawing.Bitmap bitmap)
+{
+    // Convert the Bitmap to a base64 string
+    string base64String;
+    using (MemoryStream ms = new MemoryStream())
+    {
+        bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+        byte[] imgBytes = ms.ToArray();
+        base64String = Convert.ToBase64String(imgBytes);
+    }
+
+    // Display the image using HTML
+    string html = $"<img src='data:image/png;base64,{base64String}' />";
+    Microsoft.DotNet.Interactive.Formatting.Formatter.Register<string>((content, writer) =>
+    {
+        writer.Write(content);
+    }, "text/html");
+
+    html.DisplayAs("text/html");
+}
+
+void DisplayScatterPlotMultiClass((Tensor X, Tensor y) data)
+{
+    var (X, y) = data;
+
+    // Extract data for plotting
+    var x1 = X.index_select(1, torch.tensor(0)).data<float>().ToArray().Select(f => (double)f).ToArray();
+    var x2 = X.index_select(1, torch.tensor(1)).data<float>().ToArray().Select(f => (double)f).ToArray();
+    var labels = y.data<float>().ToArray();  // Use long for class labels
+
+    // Create a new ScottPlot plot
+    var plt = new ScottPlot.Plot(600, 400);
+
+    // Define colors for different classes (expand this array if you have more classes)
+    var colors = new System.Drawing.Color[] { System.Drawing.Color.Red, System.Drawing.Color.Blue, System.Drawing.Color.Green, System.Drawing.Color.Purple };
+
+    // Get the number of unique classes from the label tensor
+    int numClasses = labels.Distinct().Count();
+
+    // Loop over each class and plot its data points in a different color
+    for (int i = 0; i < numClasses; i++)
+    {
+        // Extract indices for the current class
+        var classIndices = labels.Select((value, index) => new { value, index })
+                                 .Where(x => x.value == i)
+                                 .Select(x => x.index)
+                                 .ToArray();
+
+        // Extract the data points corresponding to the current class
+        var class_x1 = classIndices.Select(index => x1[index]).ToArray();
+        var class_x2 = classIndices.Select(index => x2[index]).ToArray();
+
+        // Plot the data points for the current class
+        plt.AddScatter(class_x1, class_x2, color: colors[i % colors.Length], markerSize: 5, lineWidth: 0);
+    }
+
+    // Customize plot
+    plt.Title("Scatter Plot of Dataset with Multiple Classes");
+    plt.XLabel("X1");
+    plt.YLabel("X2");
+
+    // Render the plot and display it using the DisplayBitmap function
+    var bmp = plt.Render();
+    DisplayBitmap(bmp);
+}
+
+
+
+(Tensor, Tensor) MakeSpiral(int n_samples_per_class, double noise, int random_state)
+{
+    var rnd = new Random(random_state);
+    
+    int n_classes = 4;  // Fixed to 4 classes
+    int total_samples = n_samples_per_class * n_classes;
+    
+    // Initialize data matrices
+    var X = torch.zeros(new long[] { total_samples, 2 }, dtype: torch.float32);
+    var y = torch.zeros(new long[] { total_samples }, dtype: torch.float32);
+    
+    for (int j = 0; j < n_classes; j++)
+    {
+        var ix = Enumerable.Range(n_samples_per_class * j, n_samples_per_class).ToArray();
+        
+        // Generate radius from 0 to 1 for each class
+        var r = torch.linspace(0.0, 1.0, n_samples_per_class).data<float>().ToArray();
+        
+        // Generate theta with some noise and spiral effect
+        var t = torch.linspace(j * 4.0, (j + 1) * 4.0, n_samples_per_class).data<float>().ToArray();
+        for (int i = 0; i < n_samples_per_class; i++)
+        {
+            t[i] += (float)(rnd.NextDouble() * noise);  // Adding noise to theta
+        }
+        
+        // Fill the data for this class
+        for (int i = 0; i < ix.Length; i++)
+        {
+            X[ix[i], 0] = (float)(r[i] * Math.Sin(t[i]));  // X1 coordinate
+            X[ix[i], 1] = (float)(r[i] * Math.Cos(t[i]));  // X2 coordinate
+            y[ix[i]] = j;  // Label for the current class
+        }
+    }
+
+    // Shuffle the dataset to mix points from different classes
+    var indices = Enumerable.Range(0, total_samples).OrderBy(_ => rnd.Next()).ToArray();
+    var X_shuffled = torch.zeros_like(X);
+    var y_shuffled = torch.zeros_like(y);
+
+    for (int i = 0; i < total_samples; i++)
+    {
+        X_shuffled[i] = X[indices[i]];
+        y_shuffled[i] = y[indices[i]];
+    }
+
+    return (X_shuffled, y_shuffled);
+}
+
+#!markdown
+
+# TorchSharp Multiclass Classification Exercises
+
+#!markdown
+
+## 1. Create a dataset using MakeSprials function
+
+#!csharp
+
+// Create X and y datasets with 100 samples per class and noise level of 0.1
+
+#!markdown
+
+## 2. Prepare train and test splits
+
+#!csharp
+
+// Create X_Train, X_Test, y_train, y_test tensors with ratio 80:20
+
+#!markdown
+
+## 3. Define model that can fit the input data
+
+#!csharp
+
+// define model - do we need any non-linear activation function?
+
+#!markdown
+
+## 4. Create training loop
+
+#!csharp
+
+// # Setup loss function and optimizer
+
+#!csharp
+
+// Build train loop for the model
+
+#!csharp
+
+// Make Test predictions and calculate accuracy
+
+#!csharp
+
+// Plot the X_Test and y_pred_labels using DisplayScatterPlotMultiClass function

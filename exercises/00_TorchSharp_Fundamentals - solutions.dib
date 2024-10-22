@@ -1,0 +1,290 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+
+#!csharp
+
+#r "nuget: TorchSharp-cpu, 0.102.6"
+#r "nuget: libtorch-cpu-win-x64, 2.2.1.1"
+
+#!markdown
+
+# TorchSharp Fundamentals Exercises
+
+#!markdown
+
+## 1. Create a random tensor with shape (7, 7).
+
+#!csharp
+
+using System;
+using TorchSharp;
+using static TorchSharp.torch;
+
+// Create a random tensor with the shape (7, 7)
+var X = torch.rand(new long[] { 7, 7 });
+
+// Print the tensor and its shape
+Console.WriteLine("Tensor X:");
+Console.WriteLine(X.ToString(TorchSharp.TensorStringStyle.Numpy));
+Console.WriteLine("Shape of Tensor X:");
+Console.WriteLine(string.Join(", ", X.shape));
+
+#!markdown
+
+## 2. Perform a matrix multiplication on the tensor from 2 with another random tensor with shape (1, 7)
+
+#!csharp
+
+// Create a random tensor with the shape (7, 7)
+var X = torch.rand(new long[] { 7, 7 });
+
+// Print the X tensor and its shape
+Console.WriteLine("Tensor X:");
+Console.WriteLine(X.ToString(TorchSharp.TensorStringStyle.Numpy));
+Console.WriteLine("Shape of Tensor X:");
+Console.WriteLine(string.Join(", ", X.shape));
+
+// Create another random tensor with the shape (1, 7)
+var Y = torch.rand(new long[] { 1, 7 });
+
+// Print the Y tensor and its shape
+Console.WriteLine("Tensor Y:");
+Console.WriteLine(Y.ToString(TorchSharp.TensorStringStyle.Numpy));
+Console.WriteLine("Shape of Tensor Y:");
+Console.WriteLine(string.Join(", ", Y.shape));
+
+// Perform matrix multiplication between X and the transpose of Y
+var Z = torch.matmul(X, Y.T);
+
+// Print the resulting tensor and its shape
+Console.WriteLine("Tensor Z:");
+Console.WriteLine(Z.ToString(TorchSharp.TensorStringStyle.Numpy));
+Console.WriteLine("Shape of Tensor Z:");
+Console.WriteLine(string.Join(", ", Z.shape));
+
+#!markdown
+
+## 3. Set the random seed, create two random tensors and perform matrix multiplication
+
+#!csharp
+
+// Set manual seed
+torch.manual_seed(42);
+
+
+// Create two random tensors
+var X = torch.rand(new long[] { 5, 3 });
+var Y = torch.rand(new long[] { 3, 4 });
+
+// Print the X tensor and its shape
+Console.WriteLine("Tensor X:");
+Console.WriteLine(X.ToString(TorchSharp.TensorStringStyle.Numpy));
+Console.WriteLine("Shape of Tensor X:");
+Console.WriteLine(string.Join(", ", X.shape));
+
+// Print the Y tensor and its shape
+Console.WriteLine("Tensor Y:");
+Console.WriteLine(Y.ToString(TorchSharp.TensorStringStyle.Numpy));
+Console.WriteLine("Shape of Tensor Y:");
+Console.WriteLine(string.Join(", ", Y.shape));
+
+
+// Perform matrix multiplication between X and the transpose of Y
+var Z = torch.matmul(X, Y);
+
+// Print the resulting tensor and its shape
+Console.WriteLine("Tensor Z:");
+Console.WriteLine(Z.ToString(TorchSharp.TensorStringStyle.Numpy));
+Console.WriteLine("Shape of Tensor Z:");
+Console.WriteLine(string.Join(", ", Z.shape));
+
+#!markdown
+
+## 4. Perform matrix multiplication on tensors from task #3 and create a tensor containing only zeros with the same dimensions and shape as the result tensor of the multiplication.
+
+#!csharp
+
+// Perform matrix multiplication between X and the transpose of Y
+var Z = torch.matmul(X, Y);
+
+// Create a tensor with the same shape as Z but filled with zeros
+var Z_zeros = torch.zeros_like(Z);
+
+// Print the tensor filled with zeros and its shape
+Console.WriteLine("Tensor Z_zeros:");
+Console.WriteLine(Z_zeros.ToString(TorchSharp.TensorStringStyle.Numpy));
+Console.WriteLine("Shape of Tensor Z_zeros:");
+Console.WriteLine(string.Join(", ", Z_zeros.shape));
+
+#!markdown
+
+## 5. Find the maximum and minimum values of the output of #3
+
+#!csharp
+
+// Find the maximum and minimum values of the resulting tensor
+var maxVal = Z.max();
+var minVal = Z.min();
+
+// Print the maximum and minimum values
+Console.WriteLine("Maximum value of Tensor Z:");
+Console.WriteLine(maxVal.item<float>());
+Console.WriteLine("Minimum value of Tensor Z:");
+Console.WriteLine(minVal.item<float>());
+
+#!markdown
+
+## 6. Find the maximum and minimum index of the output of #3
+
+#!csharp
+
+// Find the indices of the maximum and minimum values of the resulting tensor
+var maxIndex = Z.argmax();
+var minIndex = Z.argmin();
+
+// Print the indices of the maximum and minimum values
+Console.WriteLine("Index of the maximum value of Tensor Z:");
+Console.WriteLine(maxIndex.item<long>());
+Console.WriteLine("Index of the minimum value of Tensor Z:");
+Console.WriteLine(minIndex.item<long>());
+
+#!markdown
+
+## 7. Make a random tensor with shape (1, 1, 1, 10) and then create a new tensor with all the 1 dimensions removed to be left with a tensor of shape (10). Set the random seed to 7 when you create it and print out the first tensor and it's shape as well as the second tensor and it's shape.
+
+#!csharp
+
+// Set manual seed for reproducibility
+torch.manual_seed(7);
+
+// Create a random tensor with the shape (1, 1, 1, 10)
+var tensor_D = torch.rand(new long[] { 1, 1, 1, 10 });
+
+// Remove single dimensions
+var tensor_E = tensor_D.squeeze();
+
+// Print the original tensor and its shape
+Console.WriteLine("Tensor D:");
+Console.WriteLine(tensor_D.ToString(TorchSharp.TensorStringStyle.Numpy));
+Console.WriteLine("Shape of Tensor D:");
+Console.WriteLine(string.Join(", ", tensor_D.shape));
+
+// Print the tensor with single dimensions removed and its shape
+Console.WriteLine("Tensor E:");
+Console.WriteLine(tensor_E.ToString(TorchSharp.TensorStringStyle.Numpy));
+Console.WriteLine("Shape of Tensor E:");
+Console.WriteLine(string.Join(", ", tensor_E.shape));
+
+#!markdown
+
+## 8. Create random tensor  with shape (2, 3) the create tensor of ones with shape (3, 2) and print them in NumPy format
+
+#!csharp
+
+// Create random tensor with shape (2, 3)
+var tensor1 = torch.rand(new long[] { 2, 3 });
+
+// Create random tensor with shape (3, 2)
+var tensor2 = torch.ones(new long[] { 3, 2 });
+
+// Print tensors and their shapes in a NumPy format
+Console.WriteLine($"Tensor 1: {tensor1.ToString(TorchSharp.TensorStringStyle.Numpy)}");
+Console.WriteLine($"Tensor 1 shape: {string.Join(", ", tensor1.shape)}");
+Console.WriteLine($"Tensor 2: {tensor2.ToString(TorchSharp.TensorStringStyle.Numpy)}");
+Console.WriteLine($"Tensor 2 shape: {string.Join(", ", tensor2.shape)}");
+
+#!markdown
+
+## 9. Perform `matmul` operation on tensors from #8 and print the result in a CSharp format
+
+#!csharp
+
+// Perform matrix multiplication - matmul
+var result = tensor1.matmul(tensor2);
+
+// Print result tensor in CSharp format
+Console.WriteLine($"Matrix Multiplication Result: {result.ToString(TorchSharp.TensorStringStyle.CSharp)}");
+Console.WriteLine($"Result Shape: {string.Join(", ", result.shape)}");
+
+#!markdown
+
+## 10. Reshape tensor from #9 to (3, 3) - is it possible? If not chose the shape it is possible to reshape to
+
+#!csharp
+
+// Reshape tensor to (3, 3)
+// Impossible to reshape tensor of 4 elements into shape 3x3
+
+// if applies reshape to allowed shape
+var reshapedResult = result.reshape(new long[] { 4, 1 });
+Console.WriteLine("Reshaped Tensor:");
+Console.WriteLine(reshapedResult.ToString(TorchSharp.TensorStringStyle.Numpy));
+
+#!markdown
+
+## 11. Print first element of reshaped tensor from #10
+
+#!csharp
+
+// Print first element of reshaped tensor
+var firstRow = reshapedResult[0];
+Console.WriteLine($"First Row of Reshaped Tensor: {firstRow.ToString(TorchSharp.TensorStringStyle.Numpy)}");
+
+#!markdown
+
+## 12. Create tensor with values from 0 to 10 (excluded), calculate standar deviation and mean value, then print tensor in NumPy format, display values of mean and std
+
+#!csharp
+
+// Create tensor with values from 0 to 10 (exluded - 0, 1, 2 ... 9)
+var tensor3 = torch.arange(0, 10).to_type(torch.ScalarType.Float32);
+
+// Calculate mean of tensor
+var mean = tensor3.mean();
+
+// Calculate std of tensor
+var std = tensor3.std();
+
+// Print tensor in NumPy format
+Console.WriteLine($"Tensor 3: {tensor3.ToString(TorchSharp.TensorStringStyle.Numpy)}");
+
+// Print values of mean and std
+Console.WriteLine($"Mean: {mean.item<float>()}, Std: {std.item<float>()}");
+
+#!markdown
+
+## 13. Create random tesor with shape (4, 4). Print values of this tensor in any tensor string format. Slice the created tensor to get sub-tensor (2x2 from top-left corner)
+
+#!csharp
+
+// Create random tensor with shape (4, 4)
+var tensor4 = torch.rand(new long[] { 4, 4 });
+
+// Print tensor in any tensor string format
+Console.WriteLine($"Tensor 4: {tensor4.ToString(TorchSharp.TensorStringStyle.Numpy)}");
+
+// Slice tensor to get sub-tensor with first 2 rows and first 2 columns
+var subTensor = tensor4.slice(0, 0, 2, 1).slice(1, 0, 2, 1);
+
+// Print sub-tensor in any tensor string format format
+Console.WriteLine($"Sub-Tensor (2x2 from top-left corner): {subTensor.ToString(TorchSharp.TensorStringStyle.Numpy)}");
+
+#!markdown
+
+## 14. Create two random tensors with shape (2, 2) and concatenate them together - what is the shape of result tensor?
+Hint: torch.cat
+
+#!csharp
+
+// Create two random tensors with shape (2, 2)
+var tensor5 = torch.rand(new long[] { 2, 2 });
+var tensor6 = torch.rand(new long[] { 2, 2 });
+
+// Concatenate tensors along rows
+var concatenatedTensor = torch.cat(new torch.Tensor[] { tensor5, tensor6 }, 0);
+
+// Print all tensors in Numpy format
+Console.WriteLine($"Tensor 5: {tensor5.ToString(TorchSharp.TensorStringStyle.Numpy)}");
+Console.WriteLine($"Tensor 6: {tensor6.ToString(TorchSharp.TensorStringStyle.Numpy)}");
+Console.WriteLine($"Concatenated Tensor: {concatenatedTensor.ToString(TorchSharp.TensorStringStyle.Numpy)}");
